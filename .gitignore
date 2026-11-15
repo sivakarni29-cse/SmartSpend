@@ -1,0 +1,10 @@
+# Private expense and budget data
+C_project/expenses*
+C_project/budgets*
+C_project/budget*
+
+# Windows executable files
+C_project/*.exe
+
+# Backup files
+*_backup*
