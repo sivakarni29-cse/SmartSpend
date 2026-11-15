@@ -3,8 +3,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#include <stdint.h>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+#else
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+
+    typedef int SOCKET;
+    #define INVALID_SOCKET (-1)
+    #define SOCKET_ERROR (-1)
+    #define closesocket close
+#endif
 
 #define PORT 8080
 #define REQUEST_SIZE 16384
@@ -34,7 +49,7 @@ void sendResponse(SOCKET client, const char *body)
         body
     );
 
-    if (length <= 0 || length >= sizeof(response))
+    if (length <= 0 || length >= (int)sizeof(response))
         return;
 
     int sent = 0;
@@ -230,9 +245,6 @@ void getExpenses(char *json)
     {
         name[0] = '\0';
 
-        // New format:
-        // name|amount|category|day|month|year
-
         int fields = sscanf(
             line,
             "%99[^|]|%f|%d|%d|%d|%d",
@@ -243,9 +255,6 @@ void getExpenses(char *json)
             &month,
             &year
         );
-
-        // Old format:
-        // name amount category month year
 
         if (fields != 6)
         {
@@ -265,9 +274,6 @@ void getExpenses(char *json)
             }
             else
             {
-                // Older format:
-                // name amount category
-
                 fields = sscanf(
                     line,
                     "%99s %f %d",
@@ -583,7 +589,15 @@ int receiveRequest(SOCKET client, char *request, size_t capacity)
 
 int main()
 {
+#ifdef _WIN32
     WSADATA wsa;
+
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+    {
+        printf("Winsock initialization failed!\n");
+        return 1;
+    }
+#endif
 
     SOCKET serverSocket;
     SOCKET clientSocket;
@@ -593,28 +607,47 @@ int main()
     char request[REQUEST_SIZE];
     char json[DATA_SIZE];
 
-    printf("Starting SmartSpend C Server...\n");
+    int port = PORT;
+    char *portEnvironment = getenv("PORT");
 
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+    if (portEnvironment != NULL)
     {
-        printf("Winsock initialization failed!\n");
-        return 1;
+        int requestedPort = atoi(portEnvironment);
+
+        if (requestedPort > 0 && requestedPort <= 65535)
+            port = requestedPort;
     }
+
+    printf("Starting SmartSpend C Server...\n");
 
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 
     if (serverSocket == INVALID_SOCKET)
     {
         printf("Socket creation failed!\n");
+
+#ifdef _WIN32
         WSACleanup();
+#endif
+
         return 1;
     }
+
+    int reuse = 1;
+
+    setsockopt(
+        serverSocket,
+        SOL_SOCKET,
+        SO_REUSEADDR,
+        (const char *)&reuse,
+        sizeof(reuse)
+    );
 
     memset(&serverAddress, 0, sizeof(serverAddress));
 
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(PORT);
-    serverAddress.sin_addr.s_addr = inet_addr("127.0.0.1");
+    serverAddress.sin_port = htons((unsigned short)port);
+    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(
         serverSocket,
@@ -622,9 +655,13 @@ int main()
         sizeof(serverAddress)
     ) == SOCKET_ERROR)
     {
-        printf("Port 8080 is unavailable!\n");
+        printf("Port %d is unavailable!\n", port);
         closesocket(serverSocket);
+
+#ifdef _WIN32
         WSACleanup();
+#endif
+
         return 1;
     }
 
@@ -632,12 +669,16 @@ int main()
     {
         printf("Server listening failed!\n");
         closesocket(serverSocket);
+
+#ifdef _WIN32
         WSACleanup();
+#endif
+
         return 1;
     }
 
     printf("\nSmartSpend C Server is running!\n");
-    printf("Address: http://127.0.0.1:8080\n");
+    printf("Listening on port: %d\n", port);
     printf("Press Ctrl + C to stop.\n\n");
 
     while (1)
@@ -714,7 +755,10 @@ int main()
     }
 
     closesocket(serverSocket);
+
+#ifdef _WIN32
     WSACleanup();
+#endif
 
     return 0;
 }
