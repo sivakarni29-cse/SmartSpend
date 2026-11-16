@@ -4,7 +4,6 @@
 // CONNECTED TO C BACKEND
 // ========================================
 
-// LOCAL TESTING ADDRESS
 const API_URL = "https://smartspend-pcwl.onrender.com";
 
 // ========================================
@@ -52,13 +51,11 @@ const categoryNames = {
 // ACCOUNT SESSION
 // ========================================
 
-// Token is kept only for this browser tab session.
 let authToken = sessionStorage.getItem("smartSpendToken");
 let loggedInUsername = sessionStorage.getItem("smartSpendUsername") || "";
 
 let monthlyBudget = 0;
 let expenses = [];
-
 
 // ========================================
 // API REQUEST HELPER
@@ -104,7 +101,6 @@ async function apiRequest(path, options = {}) {
     return data;
 }
 
-
 // ========================================
 // SHOW LOGIN / REGISTER
 // ========================================
@@ -119,7 +115,6 @@ document.getElementById("showRegister").addEventListener("click", function() {
 
 });
 
-
 document.getElementById("showLogin").addEventListener("click", function() {
 
     registerBox.style.display = "none";
@@ -129,7 +124,6 @@ document.getElementById("showLogin").addEventListener("click", function() {
     registerMessage.textContent = "";
 
 });
-
 
 // ========================================
 // SHOW DASHBOARD
@@ -144,7 +138,6 @@ function showDashboard() {
         loggedInUsername;
 
 }
-
 
 // ========================================
 // SHOW LOGIN SCREEN
@@ -165,7 +158,6 @@ function showLoginScreen() {
     registerMessage.textContent = "";
 
 }
-
 
 // ========================================
 // REGISTER ACCOUNT
@@ -229,7 +221,6 @@ registerForm.addEventListener("submit", async function(event) {
 
 });
 
-
 // ========================================
 // LOGIN ACCOUNT
 // ========================================
@@ -285,7 +276,6 @@ loginForm.addEventListener("submit", async function(event) {
 
 });
 
-
 // ========================================
 // LOGOUT
 // ========================================
@@ -324,7 +314,6 @@ document.getElementById("logoutButton").addEventListener("click", async function
 
 });
 
-
 // ========================================
 // CONVERT C DATA INTO FRONTEND FORMAT
 // ========================================
@@ -352,7 +341,6 @@ function convertBackendExpense(expense) {
 
 }
 
-
 // ========================================
 // LOAD EXPENSES FROM C BACKEND
 // ========================================
@@ -372,7 +360,6 @@ async function loadBackendExpenses() {
     displayExpenses();
 
 }
-
 
 // ========================================
 // LOAD MONTHLY BUDGET
@@ -398,7 +385,6 @@ async function loadBackendBudget() {
     displayExpenses();
 
 }
-
 
 // ========================================
 // LOAD DASHBOARD DATA
@@ -433,7 +419,6 @@ async function loadDashboardData() {
 
 }
 
-
 // ========================================
 // GET CURRENT MONTH EXPENSES
 // ========================================
@@ -452,7 +437,6 @@ function getCurrentMonthExpenses() {
     });
 
 }
-
 
 // ========================================
 // DISPLAY EXPENSES
@@ -486,6 +470,7 @@ function displayExpenses() {
         amount.textContent = `₹${Number(expense.amount).toFixed(2)}`;
 
         // EDIT BUTTON
+
         const editButton = document.createElement("button");
 
         editButton.textContent = "Edit";
@@ -555,8 +540,8 @@ function displayExpenses() {
 
         });
 
-
         // DELETE BUTTON
+
         const deleteButton = document.createElement("button");
 
         deleteButton.textContent = "Delete";
@@ -594,8 +579,8 @@ function displayExpenses() {
 
     });
 
-
     // CURRENT MONTH TOTAL
+
     const monthlyExpenses = getCurrentMonthExpenses();
 
     const monthlyTotal = monthlyExpenses.reduce(
@@ -603,8 +588,8 @@ function displayExpenses() {
         0
     );
 
-
     // UPDATE DASHBOARD
+
     totalExpensesElement.textContent =
         `₹${monthlyTotal.toFixed(2)}`;
 
@@ -614,13 +599,11 @@ function displayExpenses() {
     remainingBalanceElement.textContent =
         `₹${(monthlyBudget - monthlyTotal).toFixed(2)}`;
 
-
     displayMonthlyReport();
     displayBudgetProgress();
     displaySpendingInsights();
 
 }
-
 
 // ========================================
 // ADD NEW EXPENSE
@@ -685,7 +668,6 @@ expenseForm.addEventListener("submit", async function(event) {
 
 });
 
-
 // ========================================
 // MONTHLY BUDGET
 // ========================================
@@ -739,7 +721,6 @@ budgetForm.addEventListener("submit", async function(event) {
 
 });
 
-
 // ========================================
 // BUDGET PROGRESS BAR
 // ========================================
@@ -790,7 +771,6 @@ function displayBudgetProgress() {
         `₹${monthlyTotal.toFixed(2)} spent out of ₹${monthlyBudget.toFixed(2)}`;
 
 }
-
 
 // ========================================
 // SMART SPENDING INSIGHTS
@@ -880,7 +860,6 @@ function displaySpendingInsights() {
 
 }
 
-
 // ========================================
 // MONTHLY REPORTS
 // ========================================
@@ -951,7 +930,6 @@ function displayMonthlyReport() {
         highestCategory[0];
 
 }
-
 
 // ========================================
 // MONTHLY SPENDING GRAPH
@@ -1025,7 +1003,6 @@ function displayExpenseChart(categoryTotals) {
 
 }
 
-
 // ========================================
 // DATE DISPLAY
 // ========================================
@@ -1045,7 +1022,6 @@ if (todayDate) {
     );
 
 }
-
 
 // ========================================
 // APPLICATION START
@@ -1071,9 +1047,40 @@ initializeApplication();
 
 // ========================================
 // PASSWORD SHOW / HIDE BUTTON
+// SVG EYE ICON
 // ========================================
 
 document.querySelectorAll(".toggle-password").forEach(button => {
+
+    const eyeIcon = `
+        <svg viewBox="0 0 24 24"
+             width="20" height="20"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8"
+             stroke-linecap="round"
+             stroke-linejoin="round">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+            <circle cx="12" cy="12" r="3"/>
+        </svg>
+    `;
+
+    const eyeSlashIcon = `
+        <svg viewBox="0 0 24 24"
+             width="20" height="20"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="1.8"
+             stroke-linecap="round"
+             stroke-linejoin="round">
+            <path d="M3 3l18 18"/>
+            <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+            <path d="M9.9 5.2A11 11 0 0 1 12 5c6.5 0 10 7 10 7a15 15 0 0 1-3.1 3.9"/>
+            <path d="M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7c1.2 0 2.3-.2 3.3-.6"/>
+        </svg>
+    `;
+
+    button.innerHTML = eyeIcon;
 
     button.addEventListener("click", function() {
 
@@ -1086,7 +1093,7 @@ document.querySelectorAll(".toggle-password").forEach(button => {
 
         passwordInput.type = isHidden ? "text" : "password";
 
-        this.textContent = isHidden ? "🙈" : "👁";
+        this.innerHTML = isHidden ? eyeSlashIcon : eyeIcon;
 
         this.setAttribute(
             "aria-label",
