@@ -1068,3 +1068,33 @@ async function initializeApplication() {
 }
 
 initializeApplication();
+
+// ========================================
+// PASSWORD SHOW / HIDE BUTTON
+// ========================================
+
+document.querySelectorAll(".toggle-password").forEach(button => {
+
+    button.addEventListener("click", function() {
+
+        const targetId = this.dataset.target;
+        const passwordInput = document.getElementById(targetId);
+
+        if (!passwordInput) return;
+
+        const isHidden = passwordInput.type === "password";
+
+        passwordInput.type = isHidden ? "text" : "password";
+
+        this.textContent = isHidden ? "🙈" : "👁";
+
+        this.setAttribute(
+            "aria-label",
+            isHidden ? "Hide password" : "Show password"
+        );
+
+        this.setAttribute("aria-pressed", String(isHidden));
+
+    });
+
+});

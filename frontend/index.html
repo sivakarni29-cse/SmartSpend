@@ -11,7 +11,7 @@
 
 <body>
 
-    <!-- LOGIN AND REGISTER AREA -->
+    <!-- LOGIN AND REGISTER -->
     <section id="authSection" class="auth-section">
 
         <div class="auth-card">
@@ -29,20 +29,20 @@
                 <form id="loginForm">
 
                     <label for="loginUsername">Username</label>
-                    <input
-                        type="text"
-                        id="loginUsername"
-                        placeholder="Enter username"
-                        required
-                    >
+                    <input type="text" id="loginUsername"
+                        placeholder="Enter username" required>
 
                     <label for="loginPassword">Password</label>
-                    <input
-                        type="password"
-                        id="loginPassword"
-                        placeholder="Enter password"
-                        required
-                    >
+
+                    <div class="password-wrapper">
+                        <input type="password" id="loginPassword"
+                            placeholder="Enter password" required>
+
+                        <button type="button" class="toggle-password"
+                            data-target="loginPassword"
+                            aria-label="Show password"
+                            aria-pressed="false">👁</button>
+                    </div>
 
                     <button type="submit">Login</button>
 
@@ -59,7 +59,6 @@
 
             </div>
 
-
             <!-- REGISTER FORM -->
             <div id="registerBox" style="display: none;">
 
@@ -69,24 +68,22 @@
                 <form id="registerForm">
 
                     <label for="registerUsername">Username</label>
-                    <input
-                        type="text"
-                        id="registerUsername"
+                    <input type="text" id="registerUsername"
                         placeholder="Choose a username"
-                        minlength="3"
-                        maxlength="32"
-                        required
-                    >
+                        minlength="3" maxlength="32" required>
 
                     <label for="registerPassword">Password</label>
-                    <input
-                        type="password"
-                        id="registerPassword"
-                        placeholder="Choose a password"
-                        minlength="8"
-                        maxlength="128"
-                        required
-                    >
+
+                    <div class="password-wrapper">
+                        <input type="password" id="registerPassword"
+                            placeholder="Choose a password"
+                            minlength="8" maxlength="128" required>
+
+                        <button type="button" class="toggle-password"
+                            data-target="registerPassword"
+                            aria-label="Show password"
+                            aria-pressed="false">👁</button>
+                    </div>
 
                     <button type="submit">Create Account</button>
 
@@ -107,22 +104,18 @@
 
     </section>
 
-
     <!-- MAIN DASHBOARD -->
     <div class="dashboard" id="dashboardApp" style="display: none;">
 
-        <!-- LEFT SIDEBAR -->
         <aside class="sidebar">
 
             <div class="logo-section">
-
                 <div class="logo-icon">₹</div>
 
                 <div class="logo-text">
                     <h2>SmartSpend</h2>
                     <span>TRACK • SAVE • GROW</span>
                 </div>
-
             </div>
 
             <nav>
@@ -139,8 +132,6 @@
 
         </aside>
 
-
-        <!-- RIGHT MAIN CONTENT -->
         <main class="main-content" id="dashboard">
 
             <!-- HEADER -->
@@ -153,15 +144,12 @@
 
                 <div>
                     <div class="date-display" id="todayDate"></div>
-                    <button type="button" id="logoutButton">
-                        Logout
-                    </button>
+                    <button type="button" id="logoutButton">Logout</button>
                 </div>
 
             </header>
 
-
-            <!-- SUMMARY CARDS -->
+            <!-- SUMMARY -->
             <section class="summary">
 
                 <div class="card purple">
@@ -183,7 +171,6 @@
                 </div>
 
             </section>
-
 
             <!-- QUICK ACTIONS -->
             <section class="section">
@@ -214,7 +201,6 @@
 
             </section>
 
-
             <!-- ADD EXPENSE -->
             <section class="section expense-form" id="addExpense">
 
@@ -223,22 +209,13 @@
                 <form id="expenseForm">
 
                     <label for="expenseName">Expense Name</label>
-                    <input
-                        type="text"
-                        id="expenseName"
-                        placeholder="Enter expense name"
-                        required
-                    >
+                    <input type="text" id="expenseName"
+                        placeholder="Enter expense name" required>
 
                     <label for="expenseAmount">Amount (₹)</label>
-                    <input
-                        type="number"
-                        id="expenseAmount"
-                        placeholder="Enter amount"
-                        min="0.01"
-                        step="0.01"
-                        required
-                    >
+                    <input type="number" id="expenseAmount"
+                        placeholder="Enter amount" min="0.01"
+                        step="0.01" required>
 
                     <label for="expenseCategory">Category</label>
 
@@ -257,8 +234,7 @@
 
             </section>
 
-
-            <!-- RECENT TRANSACTIONS -->
+            <!-- TRANSACTIONS -->
             <section class="section" id="transactions">
 
                 <h2>Recent Transactions</h2>
@@ -270,8 +246,7 @@
 
             </section>
 
-
-            <!-- MONTHLY REPORTS -->
+            <!-- REPORTS -->
             <section class="section" id="reports">
 
                 <h2>Monthly Reports</h2>
@@ -293,13 +268,11 @@
                 </div>
 
                 <div class="transactions category-box">
-
                     <h3>Category-wise Spending</h3>
 
                     <div id="categoryReport">
                         <p>No expenses recorded yet.</p>
                     </div>
-
                 </div>
 
                 <div class="chart-container">
@@ -321,7 +294,6 @@
                     <h3>Smart Spending Insights</h3>
 
                     <div class="insight-card">
-
                         <span class="insight-icon">💡</span>
 
                         <div>
@@ -333,15 +305,13 @@
                                 Add expenses to see your monthly spending insights.
                             </p>
                         </div>
-
                     </div>
 
                 </div>
 
             </section>
 
-
-            <!-- BUDGET TRACKER -->
+            <!-- BUDGET -->
             <section class="section expense-form" id="budget">
 
                 <h2>Monthly Budget Tracker</h2>
@@ -352,14 +322,9 @@
                         Set Monthly Budget (₹)
                     </label>
 
-                    <input
-                        type="number"
-                        id="budgetInput"
+                    <input type="number" id="budgetInput"
                         placeholder="Enter your monthly budget"
-                        min="0.01"
-                        step="0.01"
-                        required
-                    >
+                        min="0.01" step="0.01" required>
 
                     <button type="submit">Save Budget</button>
 
@@ -386,8 +351,6 @@
 
             </section>
 
-
-            <!-- FOOTER -->
             <footer>
                 <p>SmartSpend | Manage your money wisely</p>
             </footer>

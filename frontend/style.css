@@ -823,3 +823,44 @@ footer {
     }
 
 }
+
+/* ========================================
+   PASSWORD SHOW / HIDE BUTTON
+======================================== */
+
+.password-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.password-wrapper input {
+    width: 100%;
+    padding-right: 48px;
+}
+
+.password-wrapper .toggle-password {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: #352D43;
+    cursor: pointer;
+    font-size: 19px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: none;
+}
+
+.password-wrapper .toggle-password:hover {
+    background: #F0ECF8;
+    border-radius: 50%;
+}
