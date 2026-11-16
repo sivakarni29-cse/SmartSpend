@@ -826,6 +826,7 @@ footer {
 
 /* ========================================
    PASSWORD SHOW / HIDE BUTTON
+   PROFESSIONAL SVG EYE ICON
 ======================================== */
 
 .password-wrapper {
@@ -840,27 +841,37 @@ footer {
     padding-right: 48px;
 }
 
-.password-wrapper .toggle-password {
+.auth-card .password-wrapper .toggle-password {
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
+
     width: 36px;
     height: 36px;
     padding: 0;
     margin: 0;
+
     border: none;
+    border-radius: 50%;
     background: transparent;
     color: #352D43;
+
     cursor: pointer;
-    font-size: 19px;
+
     display: flex;
     align-items: center;
     justify-content: center;
+
     box-shadow: none;
 }
 
-.password-wrapper .toggle-password:hover {
+.auth-card .password-wrapper .toggle-password svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+}
+
+.auth-card .password-wrapper .toggle-password:hover {
     background: #F0ECF8;
-    border-radius: 50%;
 }
