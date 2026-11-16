@@ -8,3 +8,9 @@ C_project/*.exe
 
 # Backup files
 *_backup*
+
+# SmartSpend private account data
+C_project/users.txt
+C_project/users/
+C_project/user_expenses/
+C_project/user_budgets/

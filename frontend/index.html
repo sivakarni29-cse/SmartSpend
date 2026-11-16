@@ -11,298 +11,392 @@
 
 <body>
 
-<div class="dashboard">
+    <!-- LOGIN AND REGISTER AREA -->
+    <section id="authSection" class="auth-section">
 
-    <!-- LEFT SIDEBAR -->
-    <aside class="sidebar">
+        <div class="auth-card">
 
-        <div class="logo-section">
             <div class="logo-icon">₹</div>
+            <h1>SmartSpend</h1>
+            <p>TRACK • SAVE • GROW</p>
 
-            <div class="logo-text">
-                <h2>SmartSpend</h2>
-                <span>TRACK • SAVE • GROW</span>
+            <!-- LOGIN FORM -->
+            <div id="loginBox">
+
+                <h2>Welcome Back!</h2>
+                <p>Login to manage your expenses.</p>
+
+                <form id="loginForm">
+
+                    <label for="loginUsername">Username</label>
+                    <input
+                        type="text"
+                        id="loginUsername"
+                        placeholder="Enter username"
+                        required
+                    >
+
+                    <label for="loginPassword">Password</label>
+                    <input
+                        type="password"
+                        id="loginPassword"
+                        placeholder="Enter password"
+                        required
+                    >
+
+                    <button type="submit">Login</button>
+
+                </form>
+
+                <p id="loginMessage"></p>
+
+                <p>
+                    Don't have an account?
+                    <button type="button" id="showRegister" class="text-button">
+                        Register
+                    </button>
+                </p>
+
             </div>
+
+
+            <!-- REGISTER FORM -->
+            <div id="registerBox" style="display: none;">
+
+                <h2>Create Account</h2>
+                <p>Register to start tracking your expenses.</p>
+
+                <form id="registerForm">
+
+                    <label for="registerUsername">Username</label>
+                    <input
+                        type="text"
+                        id="registerUsername"
+                        placeholder="Choose a username"
+                        minlength="3"
+                        maxlength="32"
+                        required
+                    >
+
+                    <label for="registerPassword">Password</label>
+                    <input
+                        type="password"
+                        id="registerPassword"
+                        placeholder="Choose a password"
+                        minlength="8"
+                        maxlength="128"
+                        required
+                    >
+
+                    <button type="submit">Create Account</button>
+
+                </form>
+
+                <p id="registerMessage"></p>
+
+                <p>
+                    Already have an account?
+                    <button type="button" id="showLogin" class="text-button">
+                        Login
+                    </button>
+                </p>
+
+            </div>
+
         </div>
 
-        <nav>
-            <a href="#dashboard">🏠 Dashboard</a>
-            <a href="#transactions">📋 Transactions</a>
-            <a href="#reports">📊 Monthly Reports</a>
-            <a href="#budget">💰 Budget</a>
-            <a href="#addExpense">➕ Add Expense</a>
-        </nav>
-
-        <div class="sidebar-footer">
-            <p>Track • Save • Grow</p>
-        </div>
-
-    </aside>
+    </section>
 
 
-    <!-- RIGHT MAIN CONTENT -->
-    <main class="main-content" id="dashboard">
+    <!-- MAIN DASHBOARD -->
+    <div class="dashboard" id="dashboardApp" style="display: none;">
 
-        <!-- HEADER -->
-        <header class="header">
-            <div>
-                <h1>Dashboard</h1>
-                <p>Welcome! Manage your expenses easily.</p>
-            </div>
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar">
 
-            <div class="date-display" id="todayDate"></div>
-        </header>
+            <div class="logo-section">
 
+                <div class="logo-icon">₹</div>
 
-        <!-- SUMMARY CARDS -->
-        <section class="summary">
-
-            <div class="card purple">
-                <p>Monthly Budget</p>
-                <h2 id="monthlyBudget">₹5,000</h2>
-                <span>Your spending limit</span>
-            </div>
-
-            <div class="card blue">
-                <p>Total Expenses</p>
-                <h2 id="totalExpenses">₹0.00</h2>
-                <span>Your recorded expenses</span>
-            </div>
-
-            <div class="card green">
-                <p>Remaining Balance</p>
-                <h2 id="remainingBalance">₹5,000</h2>
-                <span>Available budget</span>
-            </div>
-
-        </section>
-
-
-        <!-- QUICK ACTIONS -->
-        <section class="section">
-
-            <h2>Quick Actions</h2>
-
-            <div class="quick-actions">
-
-                <a href="#addExpense" class="action-card add-action">
-                    <div class="action-icon">＋</div>
-                    <strong>Add Expense</strong>
-                    <small>Record a new expense</small>
-                </a>
-
-                <a href="#reports" class="action-card report-action">
-                    <div class="action-icon">▥</div>
-                    <strong>View Reports</strong>
-                    <small>Check your spending</small>
-                </a>
-
-                <a href="#budget" class="action-card budget-action">
-                    <div class="action-icon">₹</div>
-                    <strong>Set Budget</strong>
-                    <small>Manage your budget</small>
-                </a>
+                <div class="logo-text">
+                    <h2>SmartSpend</h2>
+                    <span>TRACK • SAVE • GROW</span>
+                </div>
 
             </div>
 
-        </section>
+            <nav>
+                <a href="#dashboard">🏠 Dashboard</a>
+                <a href="#transactions">📋 Transactions</a>
+                <a href="#reports">📊 Monthly Reports</a>
+                <a href="#budget">💰 Budget</a>
+                <a href="#addExpense">➕ Add Expense</a>
+            </nav>
 
-
-        <!-- ADD EXPENSE -->
-        <section class="section expense-form" id="addExpense">
-
-            <h2>Add New Expense</h2>
-
-            <form id="expenseForm">
-
-                <label for="expenseName">Expense Name</label>
-                <input
-                    type="text"
-                    id="expenseName"
-                    placeholder="Enter expense name"
-                    required
-                >
-
-                <label for="expenseAmount">Amount (₹)</label>
-                <input
-                    type="number"
-                    id="expenseAmount"
-                    placeholder="Enter amount"
-                    min="0.01"
-                    step="0.01"
-                    required
-                >
-
-                <label for="expenseCategory">Category</label>
-
-                <select id="expenseCategory" required>
-                    <option value="">Select Category</option>
-                    <option value="Food">Food</option>
-                    <option value="Travel">Travel</option>
-                    <option value="Education">Education</option>
-                    <option value="Shopping">Shopping</option>
-                    <option value="Other">Other</option>
-                </select>
-
-                <button type="submit">Add Expense</button>
-
-            </form>
-
-        </section>
-
-
-        <!-- RECENT TRANSACTIONS -->
-        <section class="section" id="transactions">
-
-            <h2>Recent Transactions</h2>
-
-            <div id="transactionList">
-                <p>No transactions yet.</p>
-                <span>Your expenses will appear here.</span>
+            <div class="sidebar-footer">
+                <p>Track • Save • Grow</p>
             </div>
 
-        </section>
+        </aside>
 
 
-        <!-- MONTHLY REPORTS -->
-        <section class="section" id="reports">
+        <!-- RIGHT MAIN CONTENT -->
+        <main class="main-content" id="dashboard">
 
-            <h2>Monthly Reports</h2>
+            <!-- HEADER -->
+            <header class="header">
 
-            <div class="summary report-summary">
+                <div>
+                    <h1>Dashboard</h1>
+                    <p>Welcome, <strong id="loggedInUsername"></strong>!</p>
+                </div>
+
+                <div>
+                    <div class="date-display" id="todayDate"></div>
+                    <button type="button" id="logoutButton">
+                        Logout
+                    </button>
+                </div>
+
+            </header>
+
+
+            <!-- SUMMARY CARDS -->
+            <section class="summary">
 
                 <div class="card purple">
-                    <p>This Month's Spending</p>
-                    <h2 id="reportTotal">₹0.00</h2>
-                    <span>Total expenses this month</span>
+                    <p>Monthly Budget</p>
+                    <h2 id="monthlyBudget">₹0.00</h2>
+                    <span>Your spending limit</span>
                 </div>
 
                 <div class="card blue">
-                    <p>Highest Spending Category</p>
-                    <h2 id="topCategory">None</h2>
-                    <span>Based on your expenses</span>
+                    <p>Total Expenses</p>
+                    <h2 id="totalExpenses">₹0.00</h2>
+                    <span>Your recorded expenses</span>
                 </div>
 
-            </div>
-
-
-            <!-- CATEGORY-WISE SPENDING -->
-            <div class="transactions category-box">
-
-                <h3>Category-wise Spending</h3>
-
-                <div id="categoryReport">
-                    <p>No expenses recorded yet.</p>
+                <div class="card green">
+                    <p>Remaining Balance</p>
+                    <h2 id="remainingBalance">₹0.00</h2>
+                    <span>Available budget</span>
                 </div>
 
-            </div>
+            </section>
 
 
-            <!-- MONTHLY SPENDING GRAPH -->
-            <div class="chart-container">
+            <!-- QUICK ACTIONS -->
+            <section class="section">
 
-                <h3>Monthly Spending Overview</h3>
+                <h2>Quick Actions</h2>
 
-                <p class="chart-subtitle">
-                    Your category-wise expense breakdown
-                </p>
+                <div class="quick-actions">
 
-                <div id="expenseChart" class="expense-chart">
+                    <a href="#addExpense" class="action-card add-action">
+                        <div class="action-icon">＋</div>
+                        <strong>Add Expense</strong>
+                        <small>Record a new expense</small>
+                    </a>
 
-                    <p>No spending data available yet.</p>
+                    <a href="#reports" class="action-card report-action">
+                        <div class="action-icon">▥</div>
+                        <strong>View Reports</strong>
+                        <small>Check your spending</small>
+                    </a>
+
+                    <a href="#budget" class="action-card budget-action">
+                        <div class="action-icon">₹</div>
+                        <strong>Set Budget</strong>
+                        <small>Manage your budget</small>
+                    </a>
 
                 </div>
 
-            </div>
+            </section>
 
 
-            <!-- SMART SPENDING INSIGHTS -->
-            <div class="insights-container">
+            <!-- ADD EXPENSE -->
+            <section class="section expense-form" id="addExpense">
 
-                <h3>Smart Spending Insights</h3>
+                <h2>Add New Expense</h2>
 
-                <div class="insight-card">
+                <form id="expenseForm">
 
-                    <span class="insight-icon">💡</span>
+                    <label for="expenseName">Expense Name</label>
+                    <input
+                        type="text"
+                        id="expenseName"
+                        placeholder="Enter expense name"
+                        required
+                    >
 
-                    <div>
-                        <strong id="spendingInsightTitle">
-                            Your Spending Insight
-                        </strong>
+                    <label for="expenseAmount">Amount (₹)</label>
+                    <input
+                        type="number"
+                        id="expenseAmount"
+                        placeholder="Enter amount"
+                        min="0.01"
+                        step="0.01"
+                        required
+                    >
 
-                        <p id="spendingInsightText">
-                            Add expenses to see your monthly spending insights.
-                        </p>
+                    <label for="expenseCategory">Category</label>
+
+                    <select id="expenseCategory" required>
+                        <option value="">Select Category</option>
+                        <option value="Food">Food</option>
+                        <option value="Travel">Travel</option>
+                        <option value="Education">Education</option>
+                        <option value="Shopping">Shopping</option>
+                        <option value="Other">Other</option>
+                    </select>
+
+                    <button type="submit">Add Expense</button>
+
+                </form>
+
+            </section>
+
+
+            <!-- RECENT TRANSACTIONS -->
+            <section class="section" id="transactions">
+
+                <h2>Recent Transactions</h2>
+
+                <div id="transactionList">
+                    <p>No transactions yet.</p>
+                    <span>Your expenses will appear here.</span>
+                </div>
+
+            </section>
+
+
+            <!-- MONTHLY REPORTS -->
+            <section class="section" id="reports">
+
+                <h2>Monthly Reports</h2>
+
+                <div class="summary report-summary">
+
+                    <div class="card purple">
+                        <p>This Month's Spending</p>
+                        <h2 id="reportTotal">₹0.00</h2>
+                        <span>Total expenses this month</span>
+                    </div>
+
+                    <div class="card blue">
+                        <p>Highest Spending Category</p>
+                        <h2 id="topCategory">None</h2>
+                        <span>Based on your expenses</span>
                     </div>
 
                 </div>
 
-            </div>
+                <div class="transactions category-box">
 
-        </section>
+                    <h3>Category-wise Spending</h3>
 
-
-        <!-- BUDGET TRACKER -->
-        <section class="section expense-form" id="budget">
-
-            <h2>Monthly Budget Tracker</h2>
-
-            <form id="budgetForm">
-
-                <label for="budgetInput">
-                    Set Monthly Budget (₹)
-                </label>
-
-                <input
-                    type="number"
-                    id="budgetInput"
-                    placeholder="Enter your monthly budget"
-                    min="0.01"
-                    step="0.01"
-                    required
-                >
-
-                <button type="submit">Save Budget</button>
-
-            </form>
-
-            <p id="budgetMessage"></p>
-
-
-            <!-- BUDGET PROGRESS -->
-            <div class="budget-progress">
-
-                <div class="progress-info">
-                    <span>Budget Used</span>
-                    <strong id="budgetPercentage">0%</strong>
-                </div>
-
-                <div class="progress-track">
-                    <div
-                        id="budgetProgressBar"
-                        class="progress-fill">
+                    <div id="categoryReport">
+                        <p>No expenses recorded yet.</p>
                     </div>
+
                 </div>
 
-                <p id="budgetProgressText">
-                    ₹0 spent out of ₹0
-                </p>
+                <div class="chart-container">
 
-            </div>
+                    <h3>Monthly Spending Overview</h3>
 
-        </section>
+                    <p class="chart-subtitle">
+                        Your category-wise expense breakdown
+                    </p>
+
+                    <div id="expenseChart" class="expense-chart">
+                        <p>No spending data available yet.</p>
+                    </div>
+
+                </div>
+
+                <div class="insights-container">
+
+                    <h3>Smart Spending Insights</h3>
+
+                    <div class="insight-card">
+
+                        <span class="insight-icon">💡</span>
+
+                        <div>
+                            <strong id="spendingInsightTitle">
+                                Your Spending Insight
+                            </strong>
+
+                            <p id="spendingInsightText">
+                                Add expenses to see your monthly spending insights.
+                            </p>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
 
 
-        <!-- FOOTER -->
-        <footer>
-            <p>SmartSpend | Manage your money wisely</p>
-        </footer>
+            <!-- BUDGET TRACKER -->
+            <section class="section expense-form" id="budget">
 
-    </main>
+                <h2>Monthly Budget Tracker</h2>
 
-</div>
+                <form id="budgetForm">
 
-<script src="script.js"></script>
+                    <label for="budgetInput">
+                        Set Monthly Budget (₹)
+                    </label>
+
+                    <input
+                        type="number"
+                        id="budgetInput"
+                        placeholder="Enter your monthly budget"
+                        min="0.01"
+                        step="0.01"
+                        required
+                    >
+
+                    <button type="submit">Save Budget</button>
+
+                </form>
+
+                <p id="budgetMessage"></p>
+
+                <div class="budget-progress">
+
+                    <div class="progress-info">
+                        <span>Budget Used</span>
+                        <strong id="budgetPercentage">0%</strong>
+                    </div>
+
+                    <div class="progress-track">
+                        <div id="budgetProgressBar" class="progress-fill"></div>
+                    </div>
+
+                    <p id="budgetProgressText">
+                        ₹0 spent out of ₹0
+                    </p>
+
+                </div>
+
+            </section>
+
+
+            <!-- FOOTER -->
+            <footer>
+                <p>SmartSpend | Manage your money wisely</p>
+            </footer>
+
+        </main>
+
+    </div>
+
+    <script src="script.js"></script>
 
 </body>
 </html>
