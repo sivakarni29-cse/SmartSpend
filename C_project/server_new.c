@@ -1,6 +1,6 @@
-
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
@@ -13,8 +13,10 @@
     #include <direct.h>
     #define MAKE_DIR(path) _mkdir(path)
 #else
+    #include <signal.h>
     #include <sys/types.h>
     #include <sys/socket.h>
+    #include <sys/time.h>
     #include <netinet/in.h>
     #include <arpa/inet.h>
     #include <unistd.h>
@@ -29,68 +31,175 @@
 #include "auth.h"
 
 #define REQUEST_SIZE 16384
-#define DATA_SIZE 32768
+#define SOCKET_TIMEOUT_SEC 5
+
+// ========================================
+// DYNAMIC STRING BUFFER
+// ========================================
+
+typedef struct
+{
+    char *data;
+    size_t length;
+    size_t capacity;
+} StringBuffer;
+
+static int sbInit(StringBuffer *sb, size_t initialCapacity)
+{
+    if (initialCapacity < 256)
+        initialCapacity = 256;
+
+    sb->data = (char *)malloc(initialCapacity);
+    if (!sb->data)
+    {
+        sb->length = 0;
+        sb->capacity = 0;
+        return 0;
+    }
+
+    sb->data[0] = '\0';
+    sb->length = 0;
+    sb->capacity = initialCapacity;
+    return 1;
+}
+
+static void sbFree(StringBuffer *sb)
+{
+    free(sb->data);
+    sb->data = NULL;
+    sb->length = 0;
+    sb->capacity = 0;
+}
+
+static int sbEnsure(StringBuffer *sb, size_t extra)
+{
+    if (sb->length + extra + 1 <= sb->capacity)
+        return 1;
+
+    size_t newCapacity = sb->capacity ? sb->capacity * 2 : 256;
+    while (newCapacity < sb->length + extra + 1)
+        newCapacity *= 2;
+
+    char *resized = (char *)realloc(sb->data, newCapacity);
+    if (!resized)
+        return 0;
+
+    sb->data = resized;
+    sb->capacity = newCapacity;
+    return 1;
+}
+
+static int sbAppend(StringBuffer *sb, const char *text)
+{
+    size_t len = strlen(text);
+    if (!sbEnsure(sb, len))
+        return 0;
+
+    memcpy(sb->data + sb->length, text, len + 1);
+    sb->length += len;
+    return 1;
+}
+
+static int sbAppendf(StringBuffer *sb, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int needed = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+
+    if (needed < 0)
+        return 0;
+
+    if (!sbEnsure(sb, (size_t)needed))
+        return 0;
+
+    va_start(args, fmt);
+    vsnprintf(sb->data + sb->length, sb->capacity - sb->length, fmt, args);
+    va_end(args);
+
+    sb->length += (size_t)needed;
+    return 1;
+}
 
 // ========================================
 // HTTP RESPONSE
 // ========================================
 
-void sendResponse(
+static int sendAll(SOCKET client, const char *buffer, size_t length)
+{
+    size_t sent = 0;
+
+    while (sent < length)
+    {
+        int result = send(
+            client,
+            buffer + sent,
+            (int)(length - sent),
+            0
+        );
+
+        if (result <= 0)
+            return 0;
+
+        sent += (size_t)result;
+    }
+
+    return 1;
+}
+
+static void sendResponse(
     SOCKET client,
     int status,
     const char *statusText,
     const char *body
 )
 {
-    char response[DATA_SIZE + 2048];
+    if (!body)
+        body = "";
 
-    int length = snprintf(
-        response,
-        sizeof(response),
+    size_t bodyLength = strlen(body);
+    char headers[1024];
+
+    int headerLength = snprintf(
+        headers,
+        sizeof(headers),
         "HTTP/1.1 %d %s\r\n"
-        "Content-Type: application/json\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
         "Access-Control-Allow-Origin: *\r\n"
         "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS\r\n"
         "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "Cache-Control: no-store\r\n"
         "Connection: close\r\n"
-        "Content-Length: %zu\r\n\r\n%s",
+        "Content-Length: %zu\r\n\r\n",
         status,
         statusText,
-        strlen(body),
-        body
+        bodyLength
     );
 
-    if (length <= 0 || length >= (int)sizeof(response))
+    if (headerLength <= 0 || headerLength >= (int)sizeof(headers))
         return;
 
-    int sent = 0;
+    if (!sendAll(client, headers, (size_t)headerLength))
+        return;
 
-    while (sent < length)
-    {
-        int result = send(
-            client,
-            response + sent,
-            length - sent,
-            0
-        );
-
-        if (result <= 0)
-            break;
-
-        sent += result;
-    }
+    if (bodyLength > 0)
+        sendAll(client, body, bodyLength);
 }
 
 // ========================================
-// JSON HELPERS
+// JSON ESCAPING & STRUCTURAL PARSING
 // ========================================
 
-void jsonEscape(
+static void jsonEscape(
     const char *source,
     char *destination,
     size_t size
 )
 {
+    if (!source || size == 0)
+        return;
+
     size_t j = 0;
 
     for (size_t i = 0; source[i] && j + 2 < size; i++)
@@ -100,7 +209,7 @@ void jsonEscape(
         if (c == '"' || c == '\\')
         {
             destination[j++] = '\\';
-            destination[j++] = c;
+            destination[j++] = (char)c;
         }
         else if (c == '\n')
         {
@@ -119,44 +228,191 @@ void jsonEscape(
         }
         else if (c >= 32)
         {
-            destination[j++] = c;
+            destination[j++] = (char)c;
         }
     }
 
     destination[j] = '\0';
 }
 
-int getJsonString(
+static void setJsonMessage(
+    StringBuffer *sb,
+    const char *field,
+    const char *text
+)
+{
+    char escaped[512];
+    jsonEscape(text, escaped, sizeof(escaped));
+    sb->length = 0;
+    sb->data[0] = '\0';
+    sbAppendf(sb, "{\"%s\":\"%s\"}", field, escaped);
+}
+
+static const char *skipWs(const char *p)
+{
+    while (*p && isspace((unsigned char)*p))
+        p++;
+    return p;
+}
+
+static const char *skipJsonString(const char *p)
+{
+    if (*p != '"')
+        return NULL;
+
+    p++;
+    while (*p)
+    {
+        if (*p == '\\' && p[1])
+        {
+            p += 2;
+        }
+        else if (*p == '"')
+        {
+            return p + 1;
+        }
+        else
+        {
+            p++;
+        }
+    }
+
+    return NULL;
+}
+
+static const char *skipJsonValue(const char *p);
+
+static const char *skipJsonContainer(const char *p, char openCh, char closeCh)
+{
+    if (*p != openCh)
+        return NULL;
+
+    p = skipWs(p + 1);
+    if (*p == closeCh)
+        return p + 1;
+
+    while (*p)
+    {
+        if (openCh == '{')
+        {
+            p = skipJsonString(p);
+            if (!p)
+                return NULL;
+            p = skipWs(p);
+            if (*p != ':')
+                return NULL;
+            p = skipWs(p + 1);
+        }
+
+        p = skipJsonValue(p);
+        if (!p)
+            return NULL;
+
+        p = skipWs(p);
+        if (*p == ',')
+        {
+            p = skipWs(p + 1);
+        }
+        else if (*p == closeCh)
+        {
+            return p + 1;
+        }
+        else
+        {
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+
+static const char *skipJsonValue(const char *p)
+{
+    p = skipWs(p);
+    if (!*p)
+        return NULL;
+
+    if (*p == '"')
+        return skipJsonString(p);
+    if (*p == '{')
+        return skipJsonContainer(p, '{', '}');
+    if (*p == '[')
+        return skipJsonContainer(p, '[', ']');
+
+    while (*p && *p != ',' && *p != '}' && *p != ']' && !isspace((unsigned char)*p))
+        p++;
+
+    return p;
+}
+
+/* Locate the value pointer for a top-level JSON object key */
+static const char *findJsonValue(const char *json, const char *key)
+{
+    if (!json || !key)
+        return NULL;
+
+    const char *p = skipWs(json);
+    if (*p != '{')
+        return NULL;
+
+    p = skipWs(p + 1);
+    if (*p == '}')
+        return NULL;
+
+    size_t keyLen = strlen(key);
+
+    while (*p)
+    {
+        if (*p != '"')
+            return NULL;
+
+        const char *keyStart = p + 1;
+        const char *afterKey = skipJsonString(p);
+        if (!afterKey)
+            return NULL;
+
+        size_t parsedLen = (size_t)((afterKey - 1) - keyStart);
+
+        p = skipWs(afterKey);
+        if (*p != ':')
+            return NULL;
+
+        p = skipWs(p + 1);
+
+        if (parsedLen == keyLen && strncmp(keyStart, key, keyLen) == 0)
+            return p;
+
+        p = skipJsonValue(p);
+        if (!p)
+            return NULL;
+
+        p = skipWs(p);
+        if (*p == ',')
+        {
+            p = skipWs(p + 1);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+static int getJsonString(
     const char *json,
     const char *key,
     char *output,
     size_t outputSize
 )
 {
-    char search[100];
+    const char *p = findJsonValue(json, key);
 
-    snprintf(search, sizeof(search), "\"%s\"", key);
-
-    const char *p = strstr(json, search);
-
-    if (!p)
-        return 0;
-
-    p = strchr(p, ':');
-
-    if (!p)
+    if (!p || *p != '"' || outputSize == 0)
         return 0;
 
     p++;
-
-    while (isspace((unsigned char)*p))
-        p++;
-
-    if (*p != '"')
-        return 0;
-
-    p++;
-
     size_t i = 0;
 
     while (*p && *p != '"' && i + 1 < outputSize)
@@ -167,8 +423,14 @@ int getJsonString(
 
             if (*p == 'n')
                 output[i++] = '\n';
+            else if (*p == 'r')
+                output[i++] = '\r';
             else if (*p == 't')
                 output[i++] = '\t';
+            else if (*p == 'b')
+                output[i++] = '\b';
+            else if (*p == 'f')
+                output[i++] = '\f';
             else
                 output[i++] = *p;
 
@@ -185,109 +447,151 @@ int getJsonString(
     return *p == '"';
 }
 
-int getJsonNumber(
+static int isFiniteDouble(double value)
+{
+    return (value == value) && ((value - value) == 0.0);
+}
+
+static int getJsonNumber(
     const char *json,
     const char *key,
     double *value
 )
 {
-    char search[100];
+    const char *p = findJsonValue(json, key);
 
-    snprintf(search, sizeof(search), "\"%s\"", key);
-
-    const char *p = strstr(json, search);
-
-    if (!p)
+    if (!p || *p == '"')
         return 0;
 
-    p = strchr(p, ':');
-
-    if (!p)
-        return 0;
-
-    p++;
-
-    while (isspace((unsigned char)*p))
-        p++;
-
-    char *end;
-
+    char *end = NULL;
     double number = strtod(p, &end);
 
-    if (p == end)
+    if (p == end || !isFiniteDouble(number))
+        return 0;
+
+    const char *after = skipWs(end);
+    if (*after != ',' && *after != '}' && *after != '\0')
         return 0;
 
     *value = number;
-
     return 1;
 }
 
-int getQueryNumber(
+/* Parse exact query parameter (e.g. ?id=5 or &month=11) */
+static int getQueryNumber(
     const char *path,
     const char *key,
     int *value
 )
 {
-    char search[80];
-
-    snprintf(search, sizeof(search), "%s=", key);
-
-    const char *p = strchr(path, '?');
-
-    if (!p)
+    const char *query = strchr(path, '?');
+    if (!query)
         return 0;
 
-    p = strstr(p, search);
+    size_t keyLen = strlen(key);
+    const char *p = query + 1;
 
-    if (!p)
-        return 0;
+    while (*p)
+    {
+        if (strncmp(p, key, keyLen) == 0 && p[keyLen] == '=')
+        {
+            const char *valStart = p + keyLen + 1;
+            char *end = NULL;
+            long number = strtol(valStart, &end, 10);
 
-    p += strlen(search);
+            if (valStart == end ||
+                (*end != '\0' && *end != '&') ||
+                number < 0 || number > 2147483647L)
+                return 0;
 
-    char *end;
-    long number = strtol(p, &end, 10);
+            *value = (int)number;
+            return 1;
+        }
 
-    if (p == end || number < 0 || number > 2147483647)
-        return 0;
+        const char *next = strchr(p, '&');
+        if (!next)
+            break;
+        p = next + 1;
+    }
 
-    *value = (int)number;
-
-    return 1;
+    return 0;
 }
 
 // ========================================
-// AUTHENTICATION
+// CASE-INSENSITIVE HTTP HEADER LOOKUP
 // ========================================
 
-int getToken(
+static const char *findHeaderValue(
+    const char *request,
+    const char *headerEnd,
+    const char *headerName
+)
+{
+    size_t nameLen = strlen(headerName);
+    const char *line = strstr(request, "\r\n");
+
+    while (line && line < headerEnd)
+    {
+        line += 2;
+        if (line >= headerEnd)
+            break;
+
+        size_t i = 0;
+        while (i < nameLen &&
+               line + i < headerEnd &&
+               tolower((unsigned char)line[i]) ==
+               tolower((unsigned char)headerName[i]))
+        {
+            i++;
+        }
+
+        if (i == nameLen && line + i < headerEnd && line[i] == ':')
+        {
+            const char *val = line + i + 1;
+            while (val < headerEnd && (*val == ' ' || *val == '\t'))
+                val++;
+            return val;
+        }
+
+        line = strstr(line, "\r\n");
+    }
+
+    return NULL;
+}
+
+// ========================================
+// AUTHENTICATION HELPERS
+// ========================================
+
+static int getToken(
     const char *request,
     char *token,
     size_t tokenSize
 )
 {
-    const char *header = strstr(request, "\r\nAuthorization:");
+    const char *headerEnd = strstr(request, "\r\n\r\n");
+    if (!headerEnd)
+        headerEnd = request + strlen(request);
 
-    if (!header)
-        header = strstr(request, "\r\nauthorization:");
-
+    const char *header = findHeaderValue(request, headerEnd, "Authorization");
     if (!header)
         return 0;
 
-    header += 16;
-
-    while (*header == ' ')
-        header++;
-
-    if (strncmp(header, "Bearer ", 7) != 0)
+    if (strncmp(header, "Bearer ", 7) != 0 &&
+        strncmp(header, "bearer ", 7) != 0)
         return 0;
 
     header += 7;
+
+    while (*header == ' ')
+        header++;
 
     size_t i = 0;
 
     while (*header &&
            *header != '\r' &&
            *header != '\n' &&
+           *header != ' ' &&
            i + 1 < tokenSize)
     {
         token[i++] = *header++;
@@ -298,7 +602,7 @@ int getToken(
     return i == 64;
 }
 
-int authenticateRequest(
+static int authenticateRequest(
     const char *request,
     char *username
 )
@@ -319,7 +623,22 @@ int authenticateRequest(
 // RECEIVE HTTP REQUEST
 // ========================================
 
-int receiveRequest(
+static void configureClientTimeouts(SOCKET client)
+{
+#ifdef _WIN32
+    DWORD timeoutMs = SOCKET_TIMEOUT_SEC * 1000;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeoutMs, sizeof(timeoutMs));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeoutMs, sizeof(timeoutMs));
+#else
+    struct timeval tv;
+    tv.tv_sec = SOCKET_TIMEOUT_SEC;
+    tv.tv_usec = 0;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(client, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+#endif
+}
+
+static int receiveRequest(
     SOCKET client,
     char *request,
     size_t capacity
@@ -343,7 +662,7 @@ int receiveRequest(
         if (result <= 0)
             return 0;
 
-        received += result;
+        received += (size_t)result;
         request[received] = '\0';
 
         if (headerLength == -1)
@@ -354,17 +673,21 @@ int receiveRequest(
             {
                 headerLength = (int)(headerEnd - request) + 4;
 
-                char *lengthHeader = strstr(
+                const char *lengthVal = findHeaderValue(
                     request,
-                    "Content-Length:"
+                    headerEnd,
+                    "Content-Length"
                 );
 
-                if (lengthHeader && lengthHeader < headerEnd)
-                    contentLength = atoi(lengthHeader + 15);
-
-                if (contentLength < 0 ||
-                    contentLength > (int)capacity - headerLength - 1)
-                    return 0;
+                if (lengthVal)
+                {
+                    char *end = NULL;
+                    long parsed = strtol(lengthVal, &end, 10);
+                    if (end == lengthVal || parsed < 0 ||
+                        parsed > (long)(capacity - (size_t)headerLength - 1))
+                        return 0;
+                    contentLength = (int)parsed;
+                }
             }
         }
 
@@ -377,115 +700,134 @@ int receiveRequest(
 }
 
 // ========================================
-// CREATE DATA FOLDERS
+// DATE & FOLDER HELPERS
 // ========================================
 
-void createDataFolders(void)
+static void createDataFolders(void)
 {
-    MAKE_DIR("users");
     MAKE_DIR("user_expenses");
     MAKE_DIR("user_budgets");
 }
 
+static int isLeapYear(int year)
+{
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static int isValidDate(int day, int month, int year)
+{
+    if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1)
+        return 0;
+
+    static const int daysInMonth[] = {
+        0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    };
+
+    int maxDay = daysInMonth[month];
+    if (month == 2 && isLeapYear(year))
+        maxDay = 29;
+
+    return day <= maxDay;
+}
+
+static int isValidExpenseName(const char *name)
+{
+    if (!name || name[0] == '\0')
+        return 0;
+
+    if (strchr(name, '|') || strchr(name, '\n') || strchr(name, '\r'))
+        return 0;
+
+    return 1;
+}
+
 // ========================================
-// USER REGISTRATION
+// AUTH HANDLERS
 // ========================================
 
-void handleRegister(const char *body, char *json)
+static int handleRegister(const char *body, StringBuffer *json)
 {
     char username[MAX_USERNAME + 1];
     char password[MAX_PASSWORD + 1];
     char message[200];
 
-    if (!getJsonString(body, "username",
-                       username, sizeof(username)) ||
-        !getJsonString(body, "password",
-                       password, sizeof(password)))
+    if (!getJsonString(body, "username", username, sizeof(username)) ||
+        !getJsonString(body, "password", password, sizeof(password)))
     {
-        strcpy(json, "{\"error\":\"Username and password required\"}");
-        return;
+        setJsonMessage(json, "error", "Username and password required");
+        return 400;
     }
 
-    if (registerUser(
-        username,
-        password,
-        message,
-        sizeof(message)))
+    if (registerUser(username, password, message, sizeof(message)))
     {
-        snprintf(json, DATA_SIZE,
-                 "{\"message\":\"%s\"}", message);
+        setJsonMessage(json, "message", message);
+        return 201;
     }
-    else
-    {
-        snprintf(json, DATA_SIZE,
-                 "{\"error\":\"%s\"}", message);
-    }
+
+    setJsonMessage(json, "error", message);
+    return (strstr(message, "already exists") != NULL) ? 409 : 400;
 }
 
-// ========================================
-// USER LOGIN
-// ========================================
-
-void handleLogin(const char *body, char *json)
+static int handleLogin(const char *body, StringBuffer *json)
 {
     char username[MAX_USERNAME + 1];
     char password[MAX_PASSWORD + 1];
     char token[65];
     char message[200];
 
-    if (!getJsonString(body, "username",
-                       username, sizeof(username)) ||
-        !getJsonString(body, "password",
-                       password, sizeof(password)))
+    if (!getJsonString(body, "username", username, sizeof(username)) ||
+        !getJsonString(body, "password", password, sizeof(password)))
     {
-        strcpy(json, "{\"error\":\"Username and password required\"}");
-        return;
+        setJsonMessage(json, "error", "Username and password required");
+        return 400;
     }
 
-    if (loginUser(
-        username,
-        password,
-        token,
-        sizeof(token),
-        message,
-        sizeof(message)))
+    if (loginUser(username, password, token, sizeof(token), message, sizeof(message)))
     {
-        snprintf(json, DATA_SIZE,
-                 "{\"message\":\"%s\",\"token\":\"%s\",\"username\":\"%s\"}",
-                 message, token, username);
+        char escapedMsg[256];
+        char escapedUser[128];
+        jsonEscape(message, escapedMsg, sizeof(escapedMsg));
+        jsonEscape(username, escapedUser, sizeof(escapedUser));
+
+        sbAppendf(
+            json,
+            "{\"message\":\"%s\",\"token\":\"%s\",\"username\":\"%s\"}",
+            escapedMsg,
+            token,
+            escapedUser
+        );
+        return 200;
     }
-    else
-    {
-        snprintf(json, DATA_SIZE,
-                 "{\"error\":\"%s\"}", message);
-    }
+
+    setJsonMessage(json, "error", message);
+    return 401;
 }
 
-// ========================================
-// USER LOGOUT
-// ========================================
-
-void handleLogout(const char *request, char *json)
+static int handleLogout(const char *request, StringBuffer *json)
 {
     char token[65];
 
     if (!getToken(request, token, sizeof(token)))
     {
-        strcpy(json, "{\"error\":\"Login required\"}");
-        return;
+        setJsonMessage(json, "error", "Login required");
+        return 401;
     }
 
     if (logoutUser(token))
-        strcpy(json, "{\"message\":\"Logout successful\"}");
-    else
-        strcpy(json, "{\"error\":\"Invalid session\"}");
+    {
+        setJsonMessage(json, "message", "Logout successful");
+        return 200;
+    }
+
+    setJsonMessage(json, "error", "Invalid session");
+    return 401;
 }
 
 // ========================================
 // USER FILE PATHS
 // ========================================
 
-int getExpenseFilePath(
+static int getExpenseFilePath(
     const char *username,
     char *path,
     size_t pathSize
@@ -494,17 +836,11 @@ int getExpenseFilePath(
     if (!validUsername(username))
         return 0;
 
-    int length = snprintf(
-        path,
-        pathSize,
-        "user_expenses/%s.txt",
-        username
-    );
-
+    int length = snprintf(path, pathSize, "user_expenses/%s.txt", username);
     return length > 0 && (size_t)length < pathSize;
 }
 
-int getBudgetFilePath(
+static int getBudgetFilePath(
     const char *username,
     char *path,
     size_t pathSize
@@ -513,30 +849,26 @@ int getBudgetFilePath(
     if (!validUsername(username))
         return 0;
 
-    int length = snprintf(
-        path,
-        pathSize,
-        "user_budgets/%s.txt",
-        username
-    );
-
+    int length = snprintf(path, pathSize, "user_budgets/%s.txt", username);
     return length > 0 && (size_t)length < pathSize;
 }
 
 // ========================================
-// GET USER EXPENSES
+// GET USER EXPENSES (DYNAMIC BUFFER + OPTIONAL MONTH/YEAR FILTER)
 // ========================================
 
-void getUserExpenses(
+static void getUserExpenses(
     const char *username,
-    char *json
+    int filterMonth,
+    int filterYear,
+    StringBuffer *json
 )
 {
     char path[128];
 
     if (!getExpenseFilePath(username, path, sizeof(path)))
     {
-        strcpy(json, "[]");
+        sbAppend(json, "[]");
         return;
     }
 
@@ -544,7 +876,7 @@ void getUserExpenses(
 
     if (!file)
     {
-        strcpy(json, "[]");
+        sbAppend(json, "[]");
         return;
     }
 
@@ -553,59 +885,57 @@ void getUserExpenses(
     char escapedName[300];
 
     int id, category, day, month, year;
-    float amount;
-
-    int offset = 0;
+    double amount;
     int first = 1;
 
-    offset += snprintf(json, DATA_SIZE, "[");
+    sbAppend(json, "[");
 
     while (fgets(line, sizeof(line), file))
     {
         if (sscanf(
-            line,
-            "%d|%99[^|]|%f|%d|%d|%d|%d",
-            &id, name, &amount, &category,
-            &day, &month, &year
-        ) != 7)
+                line,
+                "%d|%99[^|]|%lf|%d|%d|%d|%d",
+                &id, name, &amount, &category,
+                &day, &month, &year
+            ) != 7)
             continue;
 
         if (id <= 0 || amount <= 0 ||
             category < 1 || category > 5 ||
-            day < 1 || day > 31 ||
-            month < 1 || month > 12 ||
-            year < 2000 || year > 2100)
+            !isValidDate(day, month, year))
+            continue;
+
+        if (filterMonth > 0 && month != filterMonth)
+            continue;
+
+        if (filterYear > 0 && year != filterYear)
             continue;
 
         jsonEscape(name, escapedName, sizeof(escapedName));
 
-        if (offset >= DATA_SIZE - 400)
+        if (!sbAppendf(
+                json,
+                "%s{\"id\":%d,\"name\":\"%s\","
+                "\"amount\":%.2f,\"category\":%d,"
+                "\"day\":%d,\"month\":%d,\"year\":%d}",
+                first ? "" : ",",
+                id, escapedName, amount,
+                category, day, month, year
+            ))
             break;
-
-        offset += snprintf(
-            json + offset,
-            DATA_SIZE - offset,
-            "%s{\"id\":%d,\"name\":\"%s\","
-            "\"amount\":%.2f,\"category\":%d,"
-            "\"day\":%d,\"month\":%d,\"year\":%d}",
-            first ? "" : ",",
-            id, escapedName, amount,
-            category, day, month, year
-        );
 
         first = 0;
     }
 
-    snprintf(json + offset, DATA_SIZE - offset, "]");
-
+    sbAppend(json, "]");
     fclose(file);
 }
 
 // ========================================
-// CATEGORY READER
+// CATEGORY & DATE READERS
 // ========================================
 
-int readCategory(const char *body, int *category)
+static int readCategory(const char *body, int *category)
 {
     double number;
 
@@ -623,7 +953,7 @@ int readCategory(const char *body, int *category)
     if (!getJsonString(body, "category", text, sizeof(text)))
         return 0;
 
-    const char *names[] = {
+    static const char *names[] = {
         "Food", "Travel", "Education", "Shopping", "Other"
     };
 
@@ -639,11 +969,7 @@ int readCategory(const char *body, int *category)
     return 0;
 }
 
-// ========================================
-// READ EXPENSE DATE
-// ========================================
-
-void getExpenseDate(
+static int getExpenseDate(
     const char *body,
     int *day,
     int *month,
@@ -653,30 +979,47 @@ void getExpenseDate(
     time_t now = time(NULL);
     struct tm *current = localtime(&now);
 
+    if (!current)
+        return 0;
+
     *day = current->tm_mday;
     *month = current->tm_mon + 1;
     *year = current->tm_year + 1900;
 
     double value;
 
-    if (getJsonNumber(body, "day", &value))
+    if (findJsonValue(body, "day") != NULL)
+    {
+        if (!getJsonNumber(body, "day", &value) || value != (int)value)
+            return 0;
         *day = (int)value;
+    }
 
-    if (getJsonNumber(body, "month", &value))
+    if (findJsonValue(body, "month") != NULL)
+    {
+        if (!getJsonNumber(body, "month", &value) || value != (int)value)
+            return 0;
         *month = (int)value;
+    }
 
-    if (getJsonNumber(body, "year", &value))
+    if (findJsonValue(body, "year") != NULL)
+    {
+        if (!getJsonNumber(body, "year", &value) || value != (int)value)
+            return 0;
         *year = (int)value;
+    }
+
+    return isValidDate(*day, *month, *year);
 }
 
 // ========================================
 // ADD EXPENSE
 // ========================================
 
-int addUserExpense(
+static int addUserExpense(
     const char *username,
     const char *body,
-    char *json
+    StringBuffer *json
 )
 {
     char path[128];
@@ -688,30 +1031,24 @@ int addUserExpense(
 
     if (!getExpenseFilePath(username, path, sizeof(path)))
     {
-        strcpy(json, "{\"error\":\"Invalid account\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid account");
+        return 400;
     }
 
     if (!getJsonString(body, "name", name, sizeof(name)) ||
         !getJsonNumber(body, "amount", &amount) ||
         !readCategory(body, &category))
     {
-        strcpy(json, "{\"error\":\"Invalid expense details\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid expense details");
+        return 400;
     }
 
-    getExpenseDate(body, &day, &month, &year);
-
-    if (name[0] == '\0' ||
-        strchr(name, '|') || strchr(name, '\n') ||
-        strchr(name, '\r') ||
-        amount <= 0 || amount > 10000000 ||
-        day < 1 || day > 31 ||
-        month < 1 || month > 12 ||
-        year < 2000 || year > 2100)
+    if (!getExpenseDate(body, &day, &month, &year) ||
+        !isValidExpenseName(name) ||
+        amount <= 0 || amount > 10000000)
     {
-        strcpy(json, "{\"error\":\"Invalid expense values\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid expense values or date");
+        return 400;
     }
 
     int nextId = 1;
@@ -736,8 +1073,8 @@ int addUserExpense(
 
     if (!file)
     {
-        strcpy(json, "{\"error\":\"Could not save expense\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not save expense");
+        return 500;
     }
 
     fprintf(file, "%d|%s|%.2f|%d|%d|%d|%d\n",
@@ -746,21 +1083,18 @@ int addUserExpense(
 
     fclose(file);
 
-    snprintf(json, DATA_SIZE,
-             "{\"message\":\"Expense added\",\"id\":%d}",
-             nextId);
-
-    return 1;
+    sbAppendf(json, "{\"message\":\"Expense added\",\"id\":%d}", nextId);
+    return 201;
 }
 
 // ========================================
 // EDIT EXPENSE
 // ========================================
 
-int editUserExpense(
+static int editUserExpense(
     const char *username,
     const char *body,
-    char *json
+    StringBuffer *json
 )
 {
     char path[128];
@@ -771,31 +1105,30 @@ int editUserExpense(
     int category, day, month, year;
 
     if (!getExpenseFilePath(username, path, sizeof(path)))
-        return 0;
+    {
+        setJsonMessage(json, "error", "Invalid account");
+        return 400;
+    }
 
     if (!getJsonNumber(body, "id", &idValue) ||
         !getJsonString(body, "name", name, sizeof(name)) ||
         !getJsonNumber(body, "amount", &amount) ||
         !readCategory(body, &category))
     {
-        strcpy(json, "{\"error\":\"Invalid expense details\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid expense details");
+        return 400;
     }
 
     int id = (int)idValue;
 
-    getExpenseDate(body, &day, &month, &year);
-
     if (id <= 0 || idValue != id ||
-        name[0] == '\0' || strchr(name, '|') ||
+        !getExpenseDate(body, &day, &month, &year) ||
+        !isValidExpenseName(name) ||
         amount <= 0 || amount > 10000000 ||
-        category < 1 || category > 5 ||
-        day < 1 || day > 31 ||
-        month < 1 || month > 12 ||
-        year < 2000 || year > 2100)
+        category < 1 || category > 5)
     {
-        strcpy(json, "{\"error\":\"Invalid expense values\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid expense values or date");
+        return 400;
     }
 
     snprintf(tempPath, sizeof(tempPath), "%s.tmp", path);
@@ -804,8 +1137,8 @@ int editUserExpense(
 
     if (!input)
     {
-        strcpy(json, "{\"error\":\"Expense not found\"}");
-        return 0;
+        setJsonMessage(json, "error", "Expense not found");
+        return 404;
     }
 
     FILE *output = fopen(tempPath, "w");
@@ -813,8 +1146,8 @@ int editUserExpense(
     if (!output)
     {
         fclose(input);
-        strcpy(json, "{\"error\":\"Could not update expense\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not update expense");
+        return 500;
     }
 
     char line[512];
@@ -824,9 +1157,9 @@ int editUserExpense(
     {
         int oldId, oldCategory, oldDay, oldMonth, oldYear;
         char oldName[100];
-        float oldAmount;
+        double oldAmount;
 
-        if (sscanf(line, "%d|%99[^|]|%f|%d|%d|%d|%d",
+        if (sscanf(line, "%d|%99[^|]|%lf|%d|%d|%d|%d",
                    &oldId, oldName, &oldAmount,
                    &oldCategory, &oldDay, &oldMonth,
                    &oldYear) != 7)
@@ -851,28 +1184,28 @@ int editUserExpense(
     if (!found)
     {
         remove(tempPath);
-        strcpy(json, "{\"error\":\"Expense not found\"}");
-        return 0;
+        setJsonMessage(json, "error", "Expense not found");
+        return 404;
     }
 
-    if (remove(path) != 0 || rename(tempPath, path) != 0)
+    if (!atomicReplaceFile(tempPath, path))
     {
-        strcpy(json, "{\"error\":\"Could not finish update\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not finish update");
+        return 500;
     }
 
-    strcpy(json, "{\"message\":\"Expense updated successfully\"}");
-    return 1;
+    setJsonMessage(json, "message", "Expense updated successfully");
+    return 200;
 }
 
 // ========================================
 // DELETE EXPENSE
 // ========================================
 
-int deleteUserExpense(
+static int deleteUserExpense(
     const char *username,
     int id,
-    char *json
+    StringBuffer *json
 )
 {
     char path[128];
@@ -881,8 +1214,8 @@ int deleteUserExpense(
     if (id <= 0 ||
         !getExpenseFilePath(username, path, sizeof(path)))
     {
-        strcpy(json, "{\"error\":\"Invalid expense ID\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid expense ID");
+        return 400;
     }
 
     snprintf(tempPath, sizeof(tempPath), "%s.tmp", path);
@@ -891,8 +1224,8 @@ int deleteUserExpense(
 
     if (!input)
     {
-        strcpy(json, "{\"error\":\"Expense not found\"}");
-        return 0;
+        setJsonMessage(json, "error", "Expense not found");
+        return 404;
     }
 
     FILE *output = fopen(tempPath, "w");
@@ -900,8 +1233,8 @@ int deleteUserExpense(
     if (!output)
     {
         fclose(input);
-        strcpy(json, "{\"error\":\"Could not delete expense\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not delete expense");
+        return 500;
     }
 
     char line[512];
@@ -927,36 +1260,37 @@ int deleteUserExpense(
     if (!found)
     {
         remove(tempPath);
-        strcpy(json, "{\"error\":\"Expense not found\"}");
-        return 0;
+        setJsonMessage(json, "error", "Expense not found");
+        return 404;
     }
 
-    if (remove(path) != 0 || rename(tempPath, path) != 0)
+    if (!atomicReplaceFile(tempPath, path))
     {
-        strcpy(json, "{\"error\":\"Could not finish deletion\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not finish deletion");
+        return 500;
     }
 
-    strcpy(json, "{\"message\":\"Expense deleted successfully\"}");
-    return 1;
+    setJsonMessage(json, "message", "Expense deleted successfully");
+    return 200;
 }
 
 // ========================================
 // GET MONTHLY BUDGET
 // ========================================
 
-void getUserBudget(
+static void getUserBudget(
     const char *username,
     int month,
     int year,
-    char *json
+    StringBuffer *json
 )
 {
     char path[128];
 
-    if (!getBudgetFilePath(username, path, sizeof(path)))
+    if (month < 1 || month > 12 || year < 2000 || year > 2100 ||
+        !getBudgetFilePath(username, path, sizeof(path)))
     {
-        strcpy(json, "{\"budget\":0}");
+        sbAppend(json, "{\"budget\":0}");
         return;
     }
 
@@ -964,7 +1298,7 @@ void getUserBudget(
 
     if (!file)
     {
-        strcpy(json, "{\"budget\":0}");
+        sbAppend(json, "{\"budget\":0}");
         return;
     }
 
@@ -981,18 +1315,17 @@ void getUserBudget(
 
     fclose(file);
 
-    snprintf(json, DATA_SIZE,
-             "{\"budget\":%.2f}", result);
+    sbAppendf(json, "{\"budget\":%.2f,\"month\":%d,\"year\":%d}", result, month, year);
 }
 
 // ========================================
 // SAVE MONTHLY BUDGET
 // ========================================
 
-int saveUserBudget(
+static int saveUserBudget(
     const char *username,
     const char *body,
-    char *json
+    StringBuffer *json
 )
 {
     char path[128];
@@ -1002,33 +1335,55 @@ int saveUserBudget(
     double monthValue, yearValue;
 
     if (!getBudgetFilePath(username, path, sizeof(path)))
-        return 0;
+    {
+        setJsonMessage(json, "error", "Invalid account");
+        return 400;
+    }
 
     if (!getJsonNumber(body, "budget", &budget) &&
         !getJsonNumber(body, "monthlyBudget", &budget))
     {
-        strcpy(json, "{\"error\":\"Budget value required\"}");
-        return 0;
+        setJsonMessage(json, "error", "Budget value required");
+        return 400;
     }
 
     time_t now = time(NULL);
     struct tm *current = localtime(&now);
+    if (!current)
+    {
+        setJsonMessage(json, "error", "Server date unavailable");
+        return 500;
+    }
 
     int month = current->tm_mon + 1;
     int year = current->tm_year + 1900;
 
-    if (getJsonNumber(body, "month", &monthValue))
+    if (findJsonValue(body, "month") != NULL)
+    {
+        if (!getJsonNumber(body, "month", &monthValue) || monthValue != (int)monthValue)
+        {
+            setJsonMessage(json, "error", "Invalid budget month");
+            return 400;
+        }
         month = (int)monthValue;
+    }
 
-    if (getJsonNumber(body, "year", &yearValue))
+    if (findJsonValue(body, "year") != NULL)
+    {
+        if (!getJsonNumber(body, "year", &yearValue) || yearValue != (int)yearValue)
+        {
+            setJsonMessage(json, "error", "Invalid budget year");
+            return 400;
+        }
         year = (int)yearValue;
+    }
 
     if (budget < 0 || budget > 100000000 ||
         month < 1 || month > 12 ||
         year < 2000 || year > 2100)
     {
-        strcpy(json, "{\"error\":\"Invalid budget values\"}");
-        return 0;
+        setJsonMessage(json, "error", "Invalid budget values");
+        return 400;
     }
 
     snprintf(tempPath, sizeof(tempPath), "%s.tmp", path);
@@ -1041,8 +1396,8 @@ int saveUserBudget(
         if (input)
             fclose(input);
 
-        strcpy(json, "{\"error\":\"Could not save budget\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not save budget");
+        return 500;
     }
 
     int storedMonth, storedYear;
@@ -1065,31 +1420,43 @@ int saveUserBudget(
     }
 
     fprintf(output, "%d|%d|%.2f\n", month, year, budget);
-
     fclose(output);
 
-    if (remove(path) != 0 && errno != ENOENT)
+    if (!atomicReplaceFile(tempPath, path))
     {
-        remove(tempPath);
-        strcpy(json, "{\"error\":\"Could not replace budget file\"}");
-        return 0;
+        setJsonMessage(json, "error", "Could not finish saving budget");
+        return 500;
     }
 
-    if (rename(tempPath, path) != 0)
-    {
-        strcpy(json, "{\"error\":\"Could not finish saving budget\"}");
-        return 0;
-    }
+    setJsonMessage(json, "message", "Budget saved successfully");
+    return 200;
+}
 
-    strcpy(json, "{\"message\":\"Budget saved successfully\"}");
-    return 1;
+// ========================================
+// STATUS TEXT HELPER
+// ========================================
+
+static const char *httpStatusText(int code)
+{
+    switch (code)
+    {
+        case 200: return "OK";
+        case 201: return "Created";
+        case 204: return "No Content";
+        case 400: return "Bad Request";
+        case 401: return "Unauthorized";
+        case 404: return "Not Found";
+        case 409: return "Conflict";
+        case 500: return "Internal Server Error";
+        default:  return "OK";
+    }
 }
 
 // ========================================
 // ROUTE API REQUESTS
 // ========================================
 
-void handleRequest(
+static void handleRequest(
     const char *request,
     SOCKET client
 )
@@ -1097,109 +1464,109 @@ void handleRequest(
     char method[16] = "";
     char path[256] = "";
     char username[MAX_USERNAME + 1] = "";
-    char json[DATA_SIZE] = "{\"error\":\"Unknown request\"}";
+
+    StringBuffer json;
+    if (!sbInit(&json, 4096))
+    {
+        sendResponse(client, 500, "Internal Server Error", "{\"error\":\"Out of memory\"}");
+        return;
+    }
 
     const char *body = strstr(request, "\r\n\r\n");
-
-    if (body)
-        body += 4;
-    else
-        body = "";
+    body = body ? body + 4 : "";
 
     sscanf(request, "%15s %255s", method, path);
 
     if (strcmp(method, "OPTIONS") == 0)
     {
         sendResponse(client, 204, "No Content", "");
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "GET") == 0 &&
         strcmp(path, "/api/status") == 0)
     {
-        strcpy(json, "{\"status\":\"SmartSpend C backend connected\"}");
-        sendResponse(client, 200, "OK", json);
+        sendResponse(client, 200, "OK", "{\"status\":\"SmartSpend C backend connected\"}");
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "POST") == 0 &&
         strcmp(path, "/api/register") == 0)
     {
-        handleRegister(body, json);
-
-        int success = strstr(json, "\"error\"") == NULL;
-
-        sendResponse(client,
-                     success ? 200 : 400,
-                     success ? "OK" : "Bad Request",
-                     json);
+        int code = handleRegister(body, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "POST") == 0 &&
         strcmp(path, "/api/login") == 0)
     {
-        handleLogin(body, json);
-
-        int success = strstr(json, "\"token\"") != NULL;
-
-        sendResponse(client,
-                     success ? 200 : 401,
-                     success ? "OK" : "Unauthorized",
-                     json);
+        int code = handleLogin(body, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "POST") == 0 &&
         strcmp(path, "/api/logout") == 0)
     {
-        handleLogout(request, json);
-
-        int success = strstr(json, "successful") != NULL;
-
-        sendResponse(client,
-                     success ? 200 : 401,
-                     success ? "OK" : "Unauthorized",
-                     json);
+        int code = handleLogout(request, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
     if (!authenticateRequest(request, username))
     {
-        strcpy(json, "{\"error\":\"Login required\"}");
-        sendResponse(client, 401, "Unauthorized", json);
+        sendResponse(client, 401, "Unauthorized", "{\"error\":\"Login required\"}");
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "GET") == 0 &&
-        strcmp(path, "/api/expenses") == 0)
+        strcmp(path, "/api/me") == 0)
     {
-        getUserExpenses(username, json);
-        sendResponse(client, 200, "OK", json);
+        char escapedUser[128];
+        jsonEscape(username, escapedUser, sizeof(escapedUser));
+        sbAppendf(&json, "{\"username\":\"%s\"}", escapedUser);
+        sendResponse(client, 200, "OK", json.data);
+        sbFree(&json);
+        return;
+    }
+
+    if (strcmp(method, "GET") == 0 &&
+        (strcmp(path, "/api/expenses") == 0 ||
+         strncmp(path, "/api/expenses?", 14) == 0))
+    {
+        int filterMonth = 0;
+        int filterYear = 0;
+        getQueryNumber(path, "month", &filterMonth);
+        getQueryNumber(path, "year", &filterYear);
+
+        getUserExpenses(username, filterMonth, filterYear, &json);
+        sendResponse(client, 200, "OK", json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "POST") == 0 &&
         strcmp(path, "/api/expenses") == 0)
     {
-        int success = addUserExpense(username, body, json);
-
-        sendResponse(client,
-                     success ? 201 : 400,
-                     success ? "Created" : "Bad Request",
-                     json);
+        int code = addUserExpense(username, body, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "PUT") == 0 &&
         strcmp(path, "/api/expenses") == 0)
     {
-        int success = editUserExpense(username, body, json);
-
-        sendResponse(client,
-                     success ? 200 : 400,
-                     success ? "OK" : "Bad Request",
-                     json);
+        int code = editUserExpense(username, body, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
@@ -1210,55 +1577,47 @@ void handleRequest(
 
         if (!getQueryNumber(path, "id", &id))
         {
-            strcpy(json, "{\"error\":\"Expense ID required\"}");
-            sendResponse(client, 400, "Bad Request", json);
+            sendResponse(client, 400, "Bad Request", "{\"error\":\"Expense ID required\"}");
+            sbFree(&json);
             return;
         }
 
-        int success = deleteUserExpense(username, id, json);
-
-        sendResponse(client,
-                     success ? 200 : 404,
-                     success ? "OK" : "Not Found",
-                     json);
+        int code = deleteUserExpense(username, id, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "GET") == 0 &&
-        strncmp(path, "/api/budget", 11) == 0)
+        (strcmp(path, "/api/budget") == 0 ||
+         strncmp(path, "/api/budget?", 12) == 0))
     {
-        int month = 0;
-        int year = 0;
-
         time_t now = time(NULL);
         struct tm *current = localtime(&now);
 
-        month = current->tm_mon + 1;
-        year = current->tm_year + 1900;
+        int month = current ? (current->tm_mon + 1) : 1;
+        int year = current ? (current->tm_year + 1900) : 2026;
 
         getQueryNumber(path, "month", &month);
         getQueryNumber(path, "year", &year);
 
-        getUserBudget(username, month, year, json);
-
-        sendResponse(client, 200, "OK", json);
+        getUserBudget(username, month, year, &json);
+        sendResponse(client, 200, "OK", json.data);
+        sbFree(&json);
         return;
     }
 
     if (strcmp(method, "POST") == 0 &&
         strcmp(path, "/api/budget") == 0)
     {
-        int success = saveUserBudget(username, body, json);
-
-        sendResponse(client,
-                     success ? 200 : 400,
-                     success ? "OK" : "Bad Request",
-                     json);
+        int code = saveUserBudget(username, body, &json);
+        sendResponse(client, code, httpStatusText(code), json.data);
+        sbFree(&json);
         return;
     }
 
-    strcpy(json, "{\"error\":\"API endpoint not found\"}");
-    sendResponse(client, 404, "Not Found", json);
+    sendResponse(client, 404, "Not Found", "{\"error\":\"API endpoint not found\"}");
+    sbFree(&json);
 }
 
 // ========================================
@@ -1275,18 +1634,19 @@ int main(void)
         printf("Winsock startup failed.\n");
         return 1;
     }
+#else
+    signal(SIGPIPE, SIG_IGN);
 #endif
 
     createDataFolders();
+    loadSessions();
 
     int port = 8080;
-
     char *environmentPort = getenv("PORT");
 
     if (environmentPort)
     {
         int configuredPort = atoi(environmentPort);
-
         if (configuredPort > 0 && configuredPort <= 65535)
             port = configuredPort;
     }
@@ -1296,6 +1656,9 @@ int main(void)
     if (server == INVALID_SOCKET)
     {
         printf("Could not create server socket.\n");
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return 1;
     }
 
@@ -1310,7 +1673,6 @@ int main(void)
     );
 
     struct sockaddr_in address;
-
     memset(&address, 0, sizeof(address));
 
     address.sin_family = AF_INET;
@@ -1318,37 +1680,34 @@ int main(void)
     address.sin_port = htons((unsigned short)port);
 
     if (bind(
-        server,
-        (struct sockaddr *)&address,
-        sizeof(address)
-    ) == SOCKET_ERROR)
+            server,
+            (struct sockaddr *)&address,
+            sizeof(address)
+        ) == SOCKET_ERROR)
     {
         printf("Could not bind server port %d.\n", port);
         closesocket(server);
-
 #ifdef _WIN32
         WSACleanup();
 #endif
-
         return 1;
     }
 
-    if (listen(server, 10) == SOCKET_ERROR)
+    if (listen(server, 16) == SOCKET_ERROR)
     {
         printf("Could not start listening.\n");
         closesocket(server);
-
 #ifdef _WIN32
         WSACleanup();
 #endif
-
         return 1;
     }
 
     printf("\nSmartSpend C Server is running!\n");
     printf("Port: %d\n", port);
-    printf("Authentication enabled.\n");
+    printf("Persistent authentication enabled.\n");
     printf("Waiting for requests...\n\n");
+    fflush(stdout);
 
     while (1)
     {
@@ -1368,6 +1727,8 @@ int main(void)
 
         if (client == INVALID_SOCKET)
             continue;
+
+        configureClientTimeouts(client);
 
         char request[REQUEST_SIZE];
 

@@ -1,4 +1,3 @@
-
 /* ========================================
    SMARTSPEND - MAIN DESIGN
 ======================================== */
@@ -17,6 +16,22 @@ body {
     font-family: "Segoe UI", Arial, sans-serif;
     background: #F8F7FC;
     color: #352D43;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
 }
 
 .dashboard {
@@ -125,7 +140,7 @@ body {
     transition: 0.3s;
 }
 
-.auth-card form button:hover {
+.auth-card form button:hover:not(:disabled) {
     background: #6841AD;
 }
 
@@ -158,6 +173,11 @@ body {
     margin-top: 14px;
     overflow-wrap: anywhere;
     letter-spacing: 0;
+}
+
+#loginMessage.success,
+#registerMessage.success {
+    color: #2E9A74;
 }
 
 /* ========================================
@@ -212,21 +232,24 @@ body {
 .sidebar nav {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 .sidebar nav a {
     text-decoration: none;
     color: #756B83;
-    padding: 14px;
+    padding: 13px 14px;
     border-radius: 10px;
     font-size: 14px;
-    transition: 0.3s;
+    font-weight: 500;
+    transition: 0.25s;
 }
 
-.sidebar nav a:hover {
+.sidebar nav a:hover,
+.sidebar nav a.active {
     background: #F1ECFF;
     color: #7651C7;
+    font-weight: 600;
 }
 
 .sidebar-footer {
@@ -238,7 +261,7 @@ body {
 }
 
 /* ========================================
-   MAIN CONTENT
+   MAIN CONTENT & HEADER
 ======================================== */
 
 .main-content {
@@ -266,31 +289,98 @@ body {
     font-size: 14px;
 }
 
+.header-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .date-display {
     color: #8055C8;
     font-size: 13px;
     font-weight: 600;
 }
 
+.month-selector {
+    padding: 8px 12px;
+    border: 1px solid #E4DDED;
+    border-radius: 8px;
+    background: #FFFFFF;
+    color: #4C3A68;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+}
+
+.month-selector:focus {
+    border-color: #A78BFA;
+    box-shadow: 0 0 0 3px #F1ECFF;
+}
+
 /* ========================================
-   LOGOUT BUTTON
+   BUTTONS
 ======================================== */
 
-#logoutButton {
-    margin-top: 10px;
-    padding: 9px 17px;
+#logoutButton,
+.secondary-button {
+    padding: 9px 16px;
     border: 1px solid #E7DCFF;
     border-radius: 8px;
     background: #F2EDFF;
     color: #7651C7;
     font-weight: 600;
+    font-size: 13px;
     cursor: pointer;
-    transition: 0.3s;
+    transition: 0.25s;
 }
 
-#logoutButton:hover {
+#logoutButton:hover,
+.secondary-button:hover:not(:disabled) {
     background: #8055C8;
     color: #FFFFFF;
+    border-color: #8055C8;
+}
+
+.primary-button {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #8055C8;
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.primary-button:hover:not(:disabled) {
+    background: #6841AD;
+}
+
+.danger-button {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    background: #E15F6D;
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+.danger-button:hover:not(:disabled) {
+    background: #C94554;
 }
 
 /* ========================================
@@ -308,6 +398,7 @@ body {
     padding: 24px;
     border-radius: 16px;
     border: 1px solid transparent;
+    transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
 
 .card p {
@@ -344,6 +435,12 @@ body {
     color: #399B78;
 }
 
+.card.over-budget {
+    background: #FFF0F2;
+    border-color: #FFD9DF;
+    color: #D94F63;
+}
+
 /* ========================================
    GENERAL SECTIONS
 ======================================== */
@@ -360,6 +457,25 @@ body {
     color: #553B86;
     font-size: 19px;
     margin-bottom: 22px;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.section-header h2 {
+    margin-bottom: 0;
+}
+
+.section-period {
+    font-size: 13px;
+    font-weight: 500;
+    color: #9A90A7;
+    margin-left: 6px;
 }
 
 /* ========================================
@@ -418,12 +534,25 @@ body {
    FORMS
 ======================================== */
 
-.expense-form form {
+.expense-form form,
+.modal-form {
     display: flex;
     flex-direction: column;
 }
 
-.expense-form label {
+.form-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.expense-form label,
+.modal-form label {
     color: #655775;
     font-size: 13px;
     font-weight: 600;
@@ -432,24 +561,33 @@ body {
 }
 
 .expense-form input,
-.expense-form select {
+.expense-form select,
+.modal-form input,
+.modal-form select,
+.transaction-controls input,
+.transaction-controls select {
     width: 100%;
-    padding: 13px;
+    padding: 12px 13px;
     border: 1px solid #E4DDED;
     border-radius: 9px;
     background: #FFFFFF;
     color: #493D59;
     outline: none;
     font-size: 14px;
+    font-family: inherit;
 }
 
 .expense-form input:focus,
-.expense-form select:focus {
+.expense-form select:focus,
+.modal-form input:focus,
+.modal-form select:focus,
+.transaction-controls input:focus,
+.transaction-controls select:focus {
     border-color: #A78BFA;
     box-shadow: 0 0 0 3px #F1ECFF;
 }
 
-.expense-form button {
+.expense-form button[type="submit"] {
     margin-top: 20px;
     padding: 14px;
     border: none;
@@ -457,42 +595,121 @@ body {
     background: #8055C8;
     color: white;
     font-weight: 600;
+    font-size: 15px;
     cursor: pointer;
     transition: 0.3s;
 }
 
-.expense-form button:hover {
+.expense-form button[type="submit"]:hover:not(:disabled) {
     background: #6841AD;
 }
 
 /* ========================================
-   TRANSACTIONS
+   TRANSACTIONS & FILTER TOOLBAR
 ======================================== */
+
+.transaction-controls {
+    display: grid;
+    grid-template-columns: 1.8fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 28px 16px;
+    color: #9A90A7;
+}
+
+.empty-state p {
+    color: #625477;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.empty-state span {
+    font-size: 13px;
+}
 
 .expense-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 15px;
-    padding: 17px 0;
+    padding: 15px 0;
     border-bottom: 1px solid #F0EDF5;
 }
 
-.expense-item strong {
-    color: #55466B;
-    font-size: 14px;
+.expense-item:last-child {
+    border-bottom: none;
 }
 
-.expense-item p {
+.expense-info {
+    flex: 1;
+    min-width: 160px;
+}
+
+.expense-info strong {
+    display: block;
+    color: #4C3A68;
+    font-size: 15px;
+    margin-bottom: 5px;
+}
+
+.expense-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     color: #9A90A7;
     font-size: 12px;
-    margin-top: 5px;
 }
 
-.expense-item span {
-    color: #7651C7;
+.category-badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
     font-weight: 600;
-    font-size: 14px;
+}
+
+.category-badge.food {
+    background: #F3EEFF;
+    color: #7651C7;
+}
+
+.category-badge.travel {
+    background: #EAF3FF;
+    color: #3E74BC;
+}
+
+.category-badge.education {
+    background: #E9F8F1;
+    color: #2E9A74;
+}
+
+.category-badge.shopping {
+    background: #FFF4E6;
+    color: #C77C28;
+}
+
+.category-badge.other {
+    background: #FCEEF4;
+    color: #BD527A;
+}
+
+.expense-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.expense-amount {
+    color: #7651C7;
+    font-weight: 700;
+    font-size: 15px;
+    margin-right: 6px;
 }
 
 .delete-button,
@@ -502,6 +719,8 @@ body {
     padding: 8px 12px;
     cursor: pointer;
     font-size: 12px;
+    font-weight: 600;
+    transition: 0.2s;
 }
 
 .delete-button {
@@ -528,7 +747,7 @@ body {
 
 .report-summary {
     grid-template-columns: repeat(2, 1fr);
-    margin-top: 20px;
+    margin-top: 10px;
 }
 
 .category-box {
@@ -542,6 +761,19 @@ body {
     color: #553B86;
     margin-bottom: 12px;
     font-size: 16px;
+}
+
+.category-report-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 11px 0;
+    border-bottom: 1px solid #EEEAF7;
+    font-size: 14px;
+    color: #4C3A68;
+}
+
+.category-report-row:last-child {
+    border-bottom: none;
 }
 
 /* ========================================
@@ -725,6 +957,139 @@ body {
     color: #39A987;
 }
 
+#budgetMessage.error {
+    color: #D94F63;
+}
+
+/* ========================================
+   MODALS
+======================================== */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(38, 26, 61, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    z-index: 1000;
+}
+
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal-card {
+    width: 100%;
+    max-width: 460px;
+    background: #FFFFFF;
+    border-radius: 18px;
+    padding: 26px;
+    border: 1px solid #EEEAF5;
+    box-shadow: 0 18px 45px rgba(45, 30, 75, 0.2);
+}
+
+.modal-card-small {
+    max-width: 390px;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.modal-card h3 {
+    color: #4C3A68;
+    font-size: 19px;
+}
+
+.modal-card > p {
+    color: #756B83;
+    font-size: 14px;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+.modal-close {
+    border: none;
+    background: #F4F0FC;
+    color: #655775;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover {
+    background: #E8DFFF;
+    color: #4C3A68;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+/* ========================================
+   TOAST NOTIFICATIONS
+======================================== */
+
+.toast-container {
+    position: fixed;
+    right: 22px;
+    bottom: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 1100;
+    max-width: 340px;
+}
+
+.toast {
+    padding: 13px 16px;
+    border-radius: 11px;
+    background: #352D43;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 10px 25px rgba(35, 22, 60, 0.22);
+    animation: toastSlideIn 0.25s ease;
+}
+
+.toast.success {
+    background: #2E9A74;
+}
+
+.toast.error {
+    background: #D94F63;
+}
+
+.toast.info {
+    background: #7651C7;
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* ========================================
    FOOTER
 ======================================== */
@@ -756,7 +1121,8 @@ footer {
         grid-template-columns: repeat(2, 1fr);
     }
 
-    .quick-actions {
+    .quick-actions,
+    .transaction-controls {
         grid-template-columns: 1fr;
     }
 
@@ -805,8 +1171,13 @@ footer {
         flex-direction: column;
     }
 
+    .header-controls {
+        align-items: flex-start;
+    }
+
     .summary,
-    .report-summary {
+    .report-summary,
+    .form-row {
         grid-template-columns: 1fr;
     }
 
@@ -815,11 +1186,19 @@ footer {
     }
 
     .expense-item {
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     .auth-card {
         padding: 25px;
+    }
+
+    .toast-container {
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        max-width: none;
     }
 
 }

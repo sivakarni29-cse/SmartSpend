@@ -11,6 +11,8 @@ C_project/*.exe
 
 # SmartSpend private account data
 C_project/users.txt
+C_project/sessions.txt
 C_project/users/
 C_project/user_expenses/
 C_project/user_budgets/
+C_project/*.tmp
