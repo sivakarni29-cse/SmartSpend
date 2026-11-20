@@ -40,6 +40,19 @@ button:disabled {
 }
 
 /* ========================================
+   SCREEN ROUTING & VISIBILITY
+======================================== */
+
+#authSection[hidden],
+#authSection.hidden,
+#authSection[style*="display: none"],
+#dashboardApp[hidden],
+#dashboardApp.hidden,
+#dashboardApp[style*="display: none"] {
+    display: none !important;
+}
+
+/* ========================================
    LOGIN AND REGISTER
 ======================================== */
 
@@ -1208,8 +1221,17 @@ footer {
         overflow-x: hidden;
     }
 
-    #dashboardApp.dashboard,
-    .dashboard {
+    #authSection[hidden],
+    #authSection.hidden,
+    #authSection[style*="display: none"],
+    #dashboardApp[hidden],
+    #dashboardApp.hidden,
+    #dashboardApp[style*="display: none"] {
+        display: none !important;
+    }
+
+    #dashboardApp.dashboard:not([hidden]):not([style*="display: none"]),
+    .dashboard:not([hidden]):not([style*="display: none"]) {
         display: block !important;
         width: 100% !important;
         max-width: 100% !important;

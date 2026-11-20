@@ -811,7 +811,10 @@ document.getElementById("showLogin").addEventListener("click", function () {
 
 function showDashboard() {
     authSection.style.display = "none";
+    authSection.hidden = true;
+    dashboardApp.hidden = false;
     dashboardApp.style.display = window.innerWidth <= 900 ? "block" : "flex";
+    window.scrollTo({ top: 0, behavior: "instant" });
     document.getElementById("loggedInUsername").textContent = loggedInUsername;
 
     if (monthSelector && !monthSelector.value) {
@@ -827,8 +830,11 @@ function showDashboard() {
 }
 
 function showLoginScreen() {
-    authSection.style.display = "flex";
     dashboardApp.style.display = "none";
+    dashboardApp.hidden = true;
+    authSection.hidden = false;
+    authSection.style.display = "flex";
+    window.scrollTo({ top: 0, behavior: "instant" });
 
     loginBox.style.display = "block";
     registerBox.style.display = "none";
@@ -845,7 +851,7 @@ function showLoginScreen() {
 }
 
 window.addEventListener("resize", () => {
-    if (dashboardApp && dashboardApp.style.display !== "none" && authSection && authSection.style.display === "none") {
+    if (dashboardApp && !dashboardApp.hidden && dashboardApp.style.display !== "none") {
         dashboardApp.style.display = window.innerWidth <= 900 ? "block" : "flex";
     }
 });
