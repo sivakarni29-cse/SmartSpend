@@ -358,25 +358,33 @@ async function resolveApiUrl() {
 function updateStorageModeUI() {
     const isBrowser = storageMode === "browser";
 
-    const authPill = document.getElementById("authStorageModePill");
-    const dashPill = document.getElementById("dashboardStorageModePill");
-    const authBtn = document.getElementById("authToggleStorageBtn");
-    const dashBtn = document.getElementById("dashToggleStorageBtn");
+    const chooseBrowserBtn = document.getElementById("chooseBrowserBtn");
+    const chooseServerBtn = document.getElementById("chooseServerBtn");
+    const dashChooseBrowserBtn = document.getElementById("dashChooseBrowserBtn");
+    const dashChooseServerBtn = document.getElementById("dashChooseServerBtn");
 
-    const pillText = isBrowser
-        ? "💾 Browser Storage (Permanent)"
-        : `🌐 C Server (${API_URL === LOCAL_API_URL ? "Local" : "Cloud"})`;
-
-    const btnText = isBrowser ? "Switch to Server" : "Switch to Browser";
-
-    if (authPill) authPill.textContent = pillText;
-    if (dashPill) dashPill.textContent = pillText;
-    if (authBtn) authBtn.textContent = btnText;
-    if (dashBtn) dashBtn.textContent = btnText;
+    if (chooseBrowserBtn) {
+        chooseBrowserBtn.classList.toggle("active", isBrowser);
+        chooseBrowserBtn.setAttribute("aria-selected", String(isBrowser));
+    }
+    if (chooseServerBtn) {
+        chooseServerBtn.classList.toggle("active", !isBrowser);
+        chooseServerBtn.setAttribute("aria-selected", String(!isBrowser));
+    }
+    if (dashChooseBrowserBtn) {
+        dashChooseBrowserBtn.classList.toggle("active", isBrowser);
+        dashChooseBrowserBtn.setAttribute("aria-selected", String(isBrowser));
+    }
+    if (dashChooseServerBtn) {
+        dashChooseServerBtn.classList.toggle("active", !isBrowser);
+        dashChooseServerBtn.setAttribute("aria-selected", String(!isBrowser));
+    }
 }
 
-function toggleStorageMode() {
-    storageMode = storageMode === "browser" ? "server" : "browser";
+function setStorageMode(mode) {
+    if (storageMode === mode) return;
+
+    storageMode = mode;
     localStorage.setItem("smartspend_storage_mode", storageMode);
     apiResolved = false;
 
@@ -386,14 +394,16 @@ function toggleStorageMode() {
 
     showToast(
         storageMode === "browser"
-            ? "Switched to Browser Storage. Data is saved permanently on this device!"
-            : "Switched to C Backend Server mode.",
+            ? "💾 Switched to Browser Storage mode (Permanent & Saved on this device)."
+            : "🌐 Switched to C Server mode (Full-Stack Backend).",
         "info"
     );
 }
 
-document.getElementById("authToggleStorageBtn")?.addEventListener("click", toggleStorageMode);
-document.getElementById("dashToggleStorageBtn")?.addEventListener("click", toggleStorageMode);
+document.getElementById("chooseBrowserBtn")?.addEventListener("click", () => setStorageMode("browser"));
+document.getElementById("chooseServerBtn")?.addEventListener("click", () => setStorageMode("server"));
+document.getElementById("dashChooseBrowserBtn")?.addEventListener("click", () => setStorageMode("browser"));
+document.getElementById("dashChooseServerBtn")?.addEventListener("click", () => setStorageMode("server"));
 
 // ========================================
 // GET HTML ELEMENTS
@@ -801,7 +811,7 @@ document.getElementById("showLogin").addEventListener("click", function () {
 
 function showDashboard() {
     authSection.style.display = "none";
-    dashboardApp.style.display = "flex";
+    dashboardApp.style.display = window.innerWidth <= 900 ? "block" : "flex";
     document.getElementById("loggedInUsername").textContent = loggedInUsername;
 
     if (monthSelector && !monthSelector.value) {
@@ -833,6 +843,12 @@ function showLoginScreen() {
 
     updateStorageModeUI();
 }
+
+window.addEventListener("resize", () => {
+    if (dashboardApp && dashboardApp.style.display !== "none" && authSection && authSection.style.display === "none") {
+        dashboardApp.style.display = window.innerWidth <= 900 ? "block" : "flex";
+    }
+});
 
 // ========================================
 // REGISTER ACCOUNT

@@ -19,9 +19,16 @@
             <h1>SmartSpend</h1>
             <p>TRACK • SAVE • GROW</p>
 
-            <div class="storage-mode-bar">
-                <span class="storage-pill" id="authStorageModePill">💾 Browser Storage (Permanent)</span>
-                <button type="button" class="storage-switch-btn" id="authToggleStorageBtn">Switch</button>
+            <div class="storage-choice-container">
+                <span class="storage-choice-label">Choose Storage Mode:</span>
+                <div class="storage-segmented-control" role="tablist">
+                    <button type="button" class="storage-tab-btn active" id="chooseBrowserBtn" role="tab" aria-selected="true">
+                        💾 Browser (Permanent)
+                    </button>
+                    <button type="button" class="storage-tab-btn" id="chooseServerBtn" role="tab" aria-selected="false">
+                        🌐 C Server
+                    </button>
+                </div>
             </div>
 
             <!-- LOGIN FORM -->
@@ -33,29 +40,22 @@
                 <form id="loginForm">
 
                     <label for="loginUsername">Username</label>
-                    <input type="text" id="loginUsername"
-                        placeholder="Enter username" autocomplete="username" required>
+                    <input type="text" id="loginUsername" placeholder="Enter username" autocomplete="username" required>
 
                     <label for="loginPassword">Password</label>
 
                     <div class="password-wrapper">
-                        <input type="password" id="loginPassword"
-                            placeholder="Enter password" autocomplete="current-password" required>
+                        <input type="password" id="loginPassword" placeholder="Enter password"
+                            autocomplete="current-password" required>
 
-                        <button type="button" class="toggle-password"
-                            data-target="loginPassword"
-                            aria-label="Show password"
-                            aria-pressed="false">
+                        <button type="button" class="toggle-password" data-target="loginPassword"
+                            aria-label="Show password" aria-pressed="false">
 
-                            <svg class="eye-icon" viewBox="0 0 24 24"
-                                width="20" height="20"
-                                fill="none" stroke="currentColor"
-                                stroke-width="1.8"
-                                stroke-linecap="round"
-                                stroke-linejoin="round">
+                            <svg class="eye-icon" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 
-                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
-                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                                <circle cx="12" cy="12" r="3" />
 
                             </svg>
 
@@ -86,31 +86,23 @@
                 <form id="registerForm">
 
                     <label for="registerUsername">Username</label>
-                    <input type="text" id="registerUsername"
-                        placeholder="Choose a username"
-                        minlength="3" maxlength="32" autocomplete="username" required>
+                    <input type="text" id="registerUsername" placeholder="Choose a username" minlength="3"
+                        maxlength="32" autocomplete="username" required>
 
                     <label for="registerPassword">Password</label>
 
                     <div class="password-wrapper">
-                        <input type="password" id="registerPassword"
-                            placeholder="Choose a password (min 8 chars)"
+                        <input type="password" id="registerPassword" placeholder="Choose a password (min 8 chars)"
                             minlength="8" maxlength="128" autocomplete="new-password" required>
 
-                        <button type="button" class="toggle-password"
-                            data-target="registerPassword"
-                            aria-label="Show password"
-                            aria-pressed="false">
+                        <button type="button" class="toggle-password" data-target="registerPassword"
+                            aria-label="Show password" aria-pressed="false">
 
-                            <svg class="eye-icon" viewBox="0 0 24 24"
-                                width="20" height="20"
-                                fill="none" stroke="currentColor"
-                                stroke-width="1.8"
-                                stroke-linecap="round"
-                                stroke-linejoin="round">
+                            <svg class="eye-icon" viewBox="0 0 24 24" width="20" height="20" fill="none"
+                                stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
 
-                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
-                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                                <circle cx="12" cy="12" r="3" />
 
                             </svg>
 
@@ -187,9 +179,13 @@
                 </div>
 
                 <div class="header-controls">
-                    <div class="storage-mode-bar" style="margin-bottom: 0;">
-                        <span class="storage-pill" id="dashboardStorageModePill">💾 Browser Storage (Permanent)</span>
-                        <button type="button" class="storage-switch-btn" id="dashToggleStorageBtn">Switch</button>
+                    <div class="storage-segmented-control storage-segmented-compact" role="tablist">
+                        <button type="button" class="storage-tab-btn active" id="dashChooseBrowserBtn" role="tab" aria-selected="true">
+                            💾 Browser
+                        </button>
+                        <button type="button" class="storage-tab-btn" id="dashChooseServerBtn" role="tab" aria-selected="false">
+                            🌐 C Server
+                        </button>
                     </div>
                     <div class="date-display" id="todayDate"></div>
                     <div class="header-actions">
@@ -261,16 +257,14 @@
                 <form id="expenseForm">
 
                     <label for="expenseName">Expense Name</label>
-                    <input type="text" id="expenseName"
-                        placeholder="Enter expense name (e.g., Groceries)"
+                    <input type="text" id="expenseName" placeholder="Enter expense name (e.g., Groceries)"
                         maxlength="99" required>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="expenseAmount">Amount (₹)</label>
-                            <input type="number" id="expenseAmount"
-                                placeholder="Enter amount" min="0.01"
-                                max="10000000" step="0.01" required>
+                            <input type="number" id="expenseAmount" placeholder="Enter amount" min="0.01" max="10000000"
+                                step="0.01" required>
                         </div>
 
                         <div class="form-group">
@@ -302,10 +296,12 @@
                 <div class="section-header">
                     <h2>Transactions</h2>
                     <div class="backup-actions">
-                        <button type="button" id="backupJsonButton" class="secondary-button" title="Save a backup file to your computer">
+                        <button type="button" id="backupJsonButton" class="secondary-button"
+                            title="Save a backup file to your computer">
                             Backup
                         </button>
-                        <button type="button" id="restoreJsonButton" class="secondary-button" title="Restore a saved backup">
+                        <button type="button" id="restoreJsonButton" class="secondary-button"
+                            title="Restore a saved backup">
                             Restore
                         </button>
                         <input type="file" id="restoreFileInput" accept=".json" style="display: none;">
@@ -316,8 +312,8 @@
                 </div>
 
                 <div class="transaction-controls" id="transactionControls">
-                    <input type="search" id="searchExpense"
-                        placeholder="Search expenses..." aria-label="Search expenses">
+                    <input type="search" id="searchExpense" placeholder="Search expenses..."
+                        aria-label="Search expenses">
 
                     <select id="filterCategory" aria-label="Filter by category">
                         <option value="All">All Categories</option>
@@ -417,9 +413,8 @@
                         Set Monthly Budget (₹)
                     </label>
 
-                    <input type="number" id="budgetInput"
-                        placeholder="Enter your monthly budget"
-                        min="0.01" max="100000000" step="0.01" required>
+                    <input type="number" id="budgetInput" placeholder="Enter your monthly budget" min="0.01"
+                        max="100000000" step="0.01" required>
 
                     <button type="submit" id="saveBudgetBtn">Save Budget</button>
 
@@ -479,7 +474,8 @@
     </div>
 
     <!-- EDIT EXPENSE MODAL -->
-    <div id="editExpenseModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle" hidden>
+    <div id="editExpenseModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="editModalTitle"
+        hidden>
         <div class="modal-card">
             <div class="modal-header">
                 <h3 id="editModalTitle">Edit Expense</h3>
@@ -522,7 +518,8 @@
     </div>
 
     <!-- CONFIRMATION MODAL -->
-    <div id="confirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" hidden>
+    <div id="confirmModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle"
+        hidden>
         <div class="modal-card modal-card-small">
             <h3 id="confirmModalTitle">Confirm Action</h3>
             <p id="confirmModalMessage"></p>
