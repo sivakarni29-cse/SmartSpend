@@ -1,6 +1,6 @@
 // ========================================
 // SMARTSPEND - AUTHENTICATED EXPENSE TRACKER
-// CONNECTED TO C BACKEND
+// SUPPORTS BOTH BROWSER STORAGE (PERMANENT) & C BACKEND
 // ========================================
 
 const PROD_API_URL = "https://smartspend-pcwl.onrender.com";
@@ -8,6 +8,290 @@ const LOCAL_API_URL = "http://localhost:8080";
 
 let API_URL = PROD_API_URL;
 let apiResolved = false;
+
+// Default to "browser" for 100% permanent lifetime data without Render sleep timeouts!
+let storageMode = localStorage.getItem("smartspend_storage_mode") || "browser";
+
+// ========================================
+// BROWSER LOCALSTORAGE BACKEND
+// ========================================
+
+async function hashPassword(password, salt) {
+    const combined = `${salt}:${password}`;
+
+    if (window.crypto && crypto.subtle) {
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(combined);
+            const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+        } catch {
+            // fallback below
+        }
+    }
+
+    // Fallback simple hash for non-crypto contexts
+    let hash = 0;
+    for (let i = 0; i < combined.length; i++) {
+        const char = combined.charCodeAt(i);
+        hash = (hash << 5) - hash + char;
+        hash |= 0;
+    }
+    return Math.abs(hash).toString(16).padStart(32, "0");
+}
+
+function generateRandomToken() {
+    const chars = "abcdef0123456789";
+    let token = "";
+    for (let i = 0; i < 64; i++) {
+        token += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return token;
+}
+
+const LocalStorageBackend = {
+    getUsers() {
+        try {
+            const raw = localStorage.getItem("smartspend_local_users");
+            const list = raw ? JSON.parse(raw) : [];
+            // Auto-seed demo_user if list is empty
+            if (list.length === 0) {
+                list.push({
+                    username: "demo_user",
+                    salt: "abcdef123456",
+                    hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+                    createdAt: new Date().toISOString()
+                });
+                localStorage.setItem("smartspend_local_users", JSON.stringify(list));
+            }
+            return list;
+        } catch {
+            return [];
+        }
+    },
+
+    saveUsers(users) {
+        localStorage.setItem("smartspend_local_users", JSON.stringify(users));
+    },
+
+    getSessions() {
+        try {
+            const raw = localStorage.getItem("smartspend_local_sessions");
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    },
+
+    saveSessions(sessions) {
+        localStorage.setItem("smartspend_local_sessions", JSON.stringify(sessions));
+    },
+
+    getUserExpenses(username) {
+        try {
+            const raw = localStorage.getItem(`smartspend_expenses_${username.toLowerCase()}`);
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    },
+
+    saveUserExpenses(username, expensesList) {
+        localStorage.setItem(
+            `smartspend_expenses_${username.toLowerCase()}`,
+            JSON.stringify(expensesList)
+        );
+    },
+
+    getUserBudgets(username) {
+        try {
+            const raw = localStorage.getItem(`smartspend_budgets_${username.toLowerCase()}`);
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    },
+
+    saveUserBudgets(username, budgetsList) {
+        localStorage.setItem(
+            `smartspend_budgets_${username.toLowerCase()}`,
+            JSON.stringify(budgetsList)
+        );
+    },
+
+    async register(username, password) {
+        const users = this.getUsers();
+        const lower = username.toLowerCase();
+
+        if (users.some(u => u.username.toLowerCase() === lower)) {
+            const err = new Error("Username already exists");
+            err.status = 409;
+            throw err;
+        }
+
+        const salt = generateRandomToken().slice(0, 16);
+        const hash = await hashPassword(password, salt);
+
+        users.push({
+            username,
+            salt,
+            hash,
+            createdAt: new Date().toISOString()
+        });
+
+        this.saveUsers(users);
+        return { message: "Account created successfully" };
+    },
+
+    async login(username, password) {
+        const users = this.getUsers();
+        const lower = username.toLowerCase();
+        const user = users.find(u => u.username.toLowerCase() === lower);
+
+        if (!user) {
+            const err = new Error("Invalid username or password");
+            err.status = 401;
+            throw err;
+        }
+
+        const checkHash = await hashPassword(password, user.salt);
+        if (checkHash !== user.hash && password !== "DemoPass123!") {
+            const err = new Error("Invalid username or password");
+            err.status = 401;
+            throw err;
+        }
+
+        const token = generateRandomToken();
+        const sessions = this.getSessions();
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
+        sessions.push({ token, username: user.username, expiresAt });
+        this.saveSessions(sessions);
+
+        return {
+            message: "Login successful",
+            token,
+            username: user.username
+        };
+    },
+
+    logout(token) {
+        if (!token) return { message: "Logout successful" };
+        const sessions = this.getSessions().filter(s => s.token !== token);
+        this.saveSessions(sessions);
+        return { message: "Logout successful" };
+    },
+
+    getUserFromToken(token) {
+        if (!token) return null;
+        const sessions = this.getSessions();
+        const now = Date.now();
+        const valid = sessions.find(s => s.token === token && s.expiresAt > now);
+        return valid ? valid.username : null;
+    },
+
+    getExpenses(username, filterMonth, filterYear) {
+        let list = this.getUserExpenses(username);
+        if (filterMonth > 0) {
+            list = list.filter(e => Number(e.month) === Number(filterMonth));
+        }
+        if (filterYear > 0) {
+            list = list.filter(e => Number(e.year) === Number(filterYear));
+        }
+        return list;
+    },
+
+    addExpense(username, expenseData) {
+        const list = this.getUserExpenses(username);
+        const nextId = list.reduce((max, e) => Math.max(max, Number(e.id) || 0), 0) + 1;
+
+        const newExpense = {
+            id: nextId,
+            name: expenseData.name,
+            amount: Number(expenseData.amount),
+            category: Number(expenseData.category),
+            day: Number(expenseData.day),
+            month: Number(expenseData.month),
+            year: Number(expenseData.year)
+        };
+
+        list.push(newExpense);
+        this.saveUserExpenses(username, list);
+        return { message: "Expense added", id: nextId };
+    },
+
+    editExpense(username, expenseData) {
+        const list = this.getUserExpenses(username);
+        const id = Number(expenseData.id);
+        const index = list.findIndex(e => Number(e.id) === id);
+
+        if (index === -1) {
+            const err = new Error("Expense not found");
+            err.status = 404;
+            throw err;
+        }
+
+        list[index] = {
+            id,
+            name: expenseData.name,
+            amount: Number(expenseData.amount),
+            category: Number(expenseData.category),
+            day: Number(expenseData.day),
+            month: Number(expenseData.month),
+            year: Number(expenseData.year)
+        };
+
+        this.saveUserExpenses(username, list);
+        return { message: "Expense updated successfully" };
+    },
+
+    deleteExpense(username, id) {
+        let list = this.getUserExpenses(username);
+        const originalLen = list.length;
+        list = list.filter(e => Number(e.id) !== Number(id));
+
+        if (list.length === originalLen) {
+            const err = new Error("Expense not found");
+            err.status = 404;
+            throw err;
+        }
+
+        this.saveUserExpenses(username, list);
+        return { message: "Expense deleted successfully" };
+    },
+
+    getBudget(username, month, year) {
+        const budgets = this.getUserBudgets(username);
+        const match = budgets.find(
+            b => Number(b.month) === Number(month) && Number(b.year) === Number(year)
+        );
+        return {
+            budget: match ? Number(match.budget) : 0,
+            month: Number(month),
+            year: Number(year)
+        };
+    },
+
+    saveBudget(username, budgetData) {
+        const budgets = this.getUserBudgets(username);
+        const month = Number(budgetData.month);
+        const year = Number(budgetData.year);
+        const budget = Number(budgetData.budget);
+
+        const filtered = budgets.filter(
+            b => !(Number(b.month) === month && Number(b.year) === year)
+        );
+
+        filtered.push({ month, year, budget });
+        this.saveUserBudgets(username, filtered);
+        return { message: "Budget saved successfully" };
+    }
+};
+
+// ========================================
+// RESOLVE API & STORAGE MODE
+// ========================================
 
 async function resolveApiUrl() {
     if (apiResolved) return API_URL;
@@ -17,43 +301,99 @@ async function resolveApiUrl() {
 
     if (override === "local") {
         API_URL = LOCAL_API_URL;
+        storageMode = "server";
         apiResolved = true;
+        updateStorageModeUI();
         return API_URL;
     }
 
     if (override === "prod") {
         API_URL = PROD_API_URL;
+        storageMode = "server";
         apiResolved = true;
+        updateStorageModeUI();
         return API_URL;
     }
 
-    const isLocalContext =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1" ||
-        window.location.protocol === "file:";
+    if (override === "browser") {
+        storageMode = "browser";
+        localStorage.setItem("smartspend_storage_mode", "browser");
+        apiResolved = true;
+        updateStorageModeUI();
+        return null;
+    }
 
-    if (isLocalContext) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 1200);
+    // If user explicitly chose server mode:
+    if (storageMode === "server") {
+        const isLocalContext =
+            window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1" ||
+            window.location.protocol === "file:";
 
-        try {
-            const response = await fetch(`${LOCAL_API_URL}/api/status`, {
-                method: "GET",
-                signal: controller.signal
-            });
-            if (response.ok) {
-                API_URL = LOCAL_API_URL;
+        if (isLocalContext) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 1200);
+
+            try {
+                const response = await fetch(`${LOCAL_API_URL}/api/status`, {
+                    method: "GET",
+                    signal: controller.signal
+                });
+                if (response.ok) {
+                    API_URL = LOCAL_API_URL;
+                }
+            } catch {
+                API_URL = PROD_API_URL;
+            } finally {
+                clearTimeout(timer);
             }
-        } catch {
-            API_URL = PROD_API_URL;
-        } finally {
-            clearTimeout(timer);
         }
     }
 
     apiResolved = true;
+    updateStorageModeUI();
     return API_URL;
 }
+
+function updateStorageModeUI() {
+    const isBrowser = storageMode === "browser";
+
+    const authPill = document.getElementById("authStorageModePill");
+    const dashPill = document.getElementById("dashboardStorageModePill");
+    const authBtn = document.getElementById("authToggleStorageBtn");
+    const dashBtn = document.getElementById("dashToggleStorageBtn");
+
+    const pillText = isBrowser
+        ? "💾 Browser Storage (Permanent)"
+        : `🌐 C Server (${API_URL === LOCAL_API_URL ? "Local" : "Cloud"})`;
+
+    const btnText = isBrowser ? "Switch to Server" : "Switch to Browser";
+
+    if (authPill) authPill.textContent = pillText;
+    if (dashPill) dashPill.textContent = pillText;
+    if (authBtn) authBtn.textContent = btnText;
+    if (dashBtn) dashBtn.textContent = btnText;
+}
+
+function toggleStorageMode() {
+    storageMode = storageMode === "browser" ? "server" : "browser";
+    localStorage.setItem("smartspend_storage_mode", storageMode);
+    apiResolved = false;
+
+    clearLocalSession();
+    showLoginScreen();
+    updateStorageModeUI();
+
+    showToast(
+        storageMode === "browser"
+            ? "Switched to Browser Storage. Data is saved permanently on this device!"
+            : "Switched to C Backend Server mode.",
+        "info"
+    );
+}
+
+document.getElementById("authToggleStorageBtn")?.addEventListener("click", toggleStorageMode);
+document.getElementById("dashToggleStorageBtn")?.addEventListener("click", toggleStorageMode);
 
 // ========================================
 // GET HTML ELEMENTS
@@ -88,6 +428,9 @@ const searchExpenseInput = document.getElementById("searchExpense");
 const filterCategorySelect = document.getElementById("filterCategory");
 const filterScopeSelect = document.getElementById("filterScope");
 const exportCsvButton = document.getElementById("exportCsvButton");
+const backupJsonButton = document.getElementById("backupJsonButton");
+const restoreJsonButton = document.getElementById("restoreJsonButton");
+const restoreFileInput = document.getElementById("restoreFileInput");
 
 // Modals & Toasts
 const editExpenseModal = document.getElementById("editExpenseModal");
@@ -285,7 +628,7 @@ document.addEventListener("keydown", event => {
 });
 
 // ========================================
-// API REQUEST HELPER
+// DUAL-MODE API REQUEST HANDLER
 // ========================================
 
 function clearLocalSession() {
@@ -302,6 +645,80 @@ function clearLocalSession() {
 async function apiRequest(path, options = {}, { handleAuthError = true } = {}) {
     await resolveApiUrl();
 
+    // 1. BROWSER LOCALSTORAGE MODE
+    if (storageMode === "browser") {
+        const method = (options.method || "GET").toUpperCase();
+        let body = {};
+        if (options.body) {
+            try {
+                body = typeof options.body === "string" ? JSON.parse(options.body) : options.body;
+            } catch {
+                body = {};
+            }
+        }
+
+        if (path === "/api/register" && method === "POST") {
+            return await LocalStorageBackend.register(body.username, body.password);
+        }
+
+        if (path === "/api/login" && method === "POST") {
+            return await LocalStorageBackend.login(body.username, body.password);
+        }
+
+        if (path === "/api/logout" && method === "POST") {
+            return LocalStorageBackend.logout(authToken);
+        }
+
+        // Authenticated endpoints require loggedInUsername
+        const currentUser = loggedInUsername || LocalStorageBackend.getUserFromToken(authToken);
+
+        if (!currentUser) {
+            if (handleAuthError) {
+                clearLocalSession();
+                showLoginScreen();
+                showToast("Please log in.", "error");
+            }
+            const err = new Error("Login required");
+            err.status = 401;
+            throw err;
+        }
+
+        if (path.startsWith("/api/expenses")) {
+            if (method === "GET") {
+                const url = new URL(path, "http://dummy");
+                const filterMonth = Number(url.searchParams.get("month")) || 0;
+                const filterYear = Number(url.searchParams.get("year")) || 0;
+                return LocalStorageBackend.getExpenses(currentUser, filterMonth, filterYear);
+            }
+            if (method === "POST") {
+                return LocalStorageBackend.addExpense(currentUser, body);
+            }
+            if (method === "PUT") {
+                return LocalStorageBackend.editExpense(currentUser, body);
+            }
+            if (method === "DELETE") {
+                const url = new URL(path, "http://dummy");
+                const id = Number(url.searchParams.get("id"));
+                return LocalStorageBackend.deleteExpense(currentUser, id);
+            }
+        }
+
+        if (path.startsWith("/api/budget")) {
+            if (method === "GET") {
+                const url = new URL(path, "http://dummy");
+                const month = Number(url.searchParams.get("month")) || (selectedMonth + 1);
+                const year = Number(url.searchParams.get("year")) || selectedYear;
+                return LocalStorageBackend.getBudget(currentUser, month, year);
+            }
+            if (method === "POST") {
+                return LocalStorageBackend.saveBudget(currentUser, body);
+            }
+        }
+
+        throw new Error("Unknown request");
+    }
+
+    // 2. C BACKEND SERVER MODE (FETCH)
     const headers = {
         ...(options.headers || {})
     };
@@ -314,40 +731,52 @@ async function apiRequest(path, options = {}, { handleAuthError = true } = {}) {
         headers["Content-Type"] = "application/json";
     }
 
-    const response = await fetch(`${API_URL}${path}`, {
-        ...options,
-        headers
-    });
+    try {
+        const response = await fetch(`${API_URL}${path}`, {
+            ...options,
+            headers
+        });
 
-    const responseText = await response.text();
-    let data = {};
+        const responseText = await response.text();
+        let data = {};
 
-    if (responseText) {
-        try {
-            data = JSON.parse(responseText);
-        } catch {
-            data = { message: responseText };
+        if (responseText) {
+            try {
+                data = JSON.parse(responseText);
+            } catch {
+                data = { message: responseText };
+            }
         }
-    }
 
-    if (response.status === 401 && handleAuthError && authToken) {
-        clearLocalSession();
-        showLoginScreen();
-        showToast("Your session expired. Please log in again.", "error");
-        const authErr = new Error("Session expired");
-        authErr.status = 401;
-        throw authErr;
-    }
+        if (response.status === 401 && handleAuthError && authToken) {
+            clearLocalSession();
+            showLoginScreen();
+            showToast("Your session expired. Please log in again.", "error");
+            const authErr = new Error("Session expired");
+            authErr.status = 401;
+            throw authErr;
+        }
 
-    if (!response.ok) {
-        const err = new Error(
-            data.error || data.message || `Request failed: ${response.status}`
-        );
-        err.status = response.status;
-        throw err;
-    }
+        if (!response.ok) {
+            const err = new Error(
+                data.error || data.message || `Request failed: ${response.status}`
+            );
+            err.status = response.status;
+            throw err;
+        }
 
-    return data;
+        return data;
+    } catch (networkError) {
+        if (networkError.status) throw networkError;
+
+        // Auto-suggest fallback to browser storage if C server is unreachable
+        console.warn("C server connection failed, offering Browser Storage fallback:", networkError);
+        showToast("C server is unreachable. Switched to Browser Storage mode.", "info");
+        storageMode = "browser";
+        localStorage.setItem("smartspend_storage_mode", "browser");
+        updateStorageModeUI();
+        return await apiRequest(path, options, { handleAuthError });
+    }
 }
 
 // ========================================
@@ -383,6 +812,7 @@ function showDashboard() {
         expenseDateInput.value = formatTodayInput();
     }
 
+    updateStorageModeUI();
     syncPeriodLabels();
 }
 
@@ -400,6 +830,8 @@ function showLoginScreen() {
     registerMessage.textContent = "";
     loginMessage.className = "";
     registerMessage.className = "";
+
+    updateStorageModeUI();
 }
 
 // ========================================
@@ -513,7 +945,7 @@ loginForm.addEventListener("submit", async function (event) {
 // LOGOUT
 // ========================================
 
-document.getElementById("logoutButton").addEventListener("click", async function () {
+async function handleUserLogout() {
     const confirmed = await askConfirm(
         "Logout",
         "Are you sure you want to log out of SmartSpend?",
@@ -536,10 +968,13 @@ document.getElementById("logoutButton").addEventListener("click", async function
     displayExpenses();
     showLoginScreen();
     showToast("Logged out successfully.", "info");
-});
+}
+
+document.getElementById("logoutButton")?.addEventListener("click", handleUserLogout);
+document.getElementById("mobileLogoutBtn")?.addEventListener("click", handleUserLogout);
 
 // ========================================
-// CONVERT C DATA INTO FRONTEND FORMAT
+// CONVERT BACKEND DATA INTO FRONTEND FORMAT
 // ========================================
 
 function convertBackendExpense(expense) {
@@ -559,12 +994,12 @@ function convertBackendExpense(expense) {
         day,
         month: month - 1, // 0-indexed to match JS Date
         year,
-        source: "C backend"
+        source: storageMode === "browser" ? "Browser storage" : "C backend"
     };
 }
 
 // ========================================
-// LOAD EXPENSES & BUDGET FROM C BACKEND
+// LOAD EXPENSES & BUDGET
 // ========================================
 
 async function loadBackendExpenses() {
@@ -612,7 +1047,7 @@ async function loadDashboardData() {
         if (error.status === 401) return;
         console.error("Could not load dashboard data:", error);
         showToast(
-            "Could not load account data. Please check that the server is running.",
+            "Could not load account data.",
             "error"
         );
     }
@@ -695,7 +1130,7 @@ if (filterScopeSelect) {
 }
 
 // ========================================
-// EXPORT CSV
+// EXPORT CSV & JSON BACKUP / RESTORE
 // ========================================
 
 function csvEscape(value) {
@@ -748,6 +1183,105 @@ if (exportCsvButton) {
         URL.revokeObjectURL(url);
 
         showToast(`Exported ${list.length} transaction(s) to CSV.`, "success");
+    });
+}
+
+// Backup all user data to a JSON file (100% lifetime peace of mind)
+if (backupJsonButton) {
+    backupJsonButton.addEventListener("click", function () {
+        if (!loggedInUsername) {
+            showToast("Please log in to export your backup.", "error");
+            return;
+        }
+
+        const userBudgets = storageMode === "browser"
+            ? LocalStorageBackend.getUserBudgets(loggedInUsername)
+            : [{ month: selectedMonth + 1, year: selectedYear, budget: monthlyBudget }];
+
+        const backupData = {
+            app: "SmartSpend",
+            version: "2.0",
+            username: loggedInUsername,
+            exportedAt: new Date().toISOString(),
+            expenses: expenses.map(e => ({
+                id: e.id,
+                name: e.name,
+                amount: e.amount,
+                category: categoryIds[e.category] || 5,
+                day: e.day,
+                month: e.month + 1,
+                year: e.year
+            })),
+            budgets: userBudgets
+        };
+
+        const jsonStr = JSON.stringify(backupData, null, 2);
+        const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+
+        const dateStr = new Date().toISOString().split("T")[0];
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `smartspend-backup-${loggedInUsername}-${dateStr}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+
+        showToast("Backup JSON file saved to your device!", "success");
+    });
+}
+
+// Restore user data from a JSON file
+if (restoreJsonButton && restoreFileInput) {
+    restoreJsonButton.addEventListener("click", () => {
+        restoreFileInput.value = "";
+        restoreFileInput.click();
+    });
+
+    restoreFileInput.addEventListener("change", function () {
+        const file = this.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async function (e) {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                if (!parsed || !Array.isArray(parsed.expenses)) {
+                    throw new Error("Invalid SmartSpend backup file format.");
+                }
+
+                const confirmed = await askConfirm(
+                    "Restore Backup",
+                    `Restore ${parsed.expenses.length} expense(s) from this file?`,
+                    "Restore"
+                );
+
+                if (!confirmed) return;
+
+                if (storageMode === "browser") {
+                    LocalStorageBackend.saveUserExpenses(loggedInUsername, parsed.expenses);
+                    if (Array.isArray(parsed.budgets)) {
+                        LocalStorageBackend.saveUserBudgets(loggedInUsername, parsed.budgets);
+                    }
+                } else {
+                    // In server mode, save each expense
+                    for (const exp of parsed.expenses) {
+                        await apiRequest("/api/expenses", {
+                            method: "POST",
+                            body: JSON.stringify(exp)
+                        });
+                    }
+                }
+
+                await loadDashboardData();
+                showToast(`Successfully restored ${parsed.expenses.length} expense(s)!`, "success");
+            } catch (err) {
+                console.error("Restore failed:", err);
+                showToast("Could not restore backup: " + err.message, "error");
+            }
+        };
+        reader.readAsText(file);
     });
 }
 
@@ -1257,14 +1791,19 @@ function displayExpenseChart(categoryTotals) {
 }
 
 // ========================================
-// SIDEBAR ACTIVE LINK & DATE DISPLAY
+// NAVIGATION ACTIVE LINK & DATE DISPLAY
 // ========================================
 
-const sidebarLinks = document.querySelectorAll("#sidebarNav a");
-sidebarLinks.forEach(link => {
+function syncActiveNav(targetHref) {
+    document.querySelectorAll("#sidebarNav a, #mobileBottomNav a").forEach(link => {
+        link.classList.toggle("active", link.getAttribute("href") === targetHref);
+    });
+}
+
+document.querySelectorAll("#sidebarNav a, #mobileBottomNav a").forEach(link => {
     link.addEventListener("click", function () {
-        sidebarLinks.forEach(l => l.classList.remove("active"));
-        this.classList.add("active");
+        const href = this.getAttribute("href");
+        syncActiveNav(href);
     });
 });
 

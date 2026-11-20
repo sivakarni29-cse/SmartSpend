@@ -19,6 +19,11 @@
             <h1>SmartSpend</h1>
             <p>TRACK • SAVE • GROW</p>
 
+            <div class="storage-mode-bar">
+                <span class="storage-pill" id="authStorageModePill">💾 Browser Storage (Permanent)</span>
+                <button type="button" class="storage-switch-btn" id="authToggleStorageBtn">Switch</button>
+            </div>
+
             <!-- LOGIN FORM -->
             <div id="loginBox">
 
@@ -159,6 +164,18 @@
 
         </aside>
 
+        <!-- MOBILE TOP BAR -->
+        <header class="mobile-top-bar">
+            <div class="mobile-logo-group">
+                <div class="logo-icon mobile-logo-icon">₹</div>
+                <div class="mobile-logo-title">
+                    <h2>SmartSpend</h2>
+                    <span>TRACK • SAVE • GROW</span>
+                </div>
+            </div>
+            <button type="button" class="mobile-logout-btn" id="mobileLogoutBtn" title="Logout">Logout</button>
+        </header>
+
         <main class="main-content" id="dashboard">
 
             <!-- HEADER -->
@@ -170,6 +187,10 @@
                 </div>
 
                 <div class="header-controls">
+                    <div class="storage-mode-bar" style="margin-bottom: 0;">
+                        <span class="storage-pill" id="dashboardStorageModePill">💾 Browser Storage (Permanent)</span>
+                        <button type="button" class="storage-switch-btn" id="dashToggleStorageBtn">Switch</button>
+                    </div>
                     <div class="date-display" id="todayDate"></div>
                     <div class="header-actions">
                         <label for="monthSelector" class="sr-only">Select Month</label>
@@ -280,9 +301,18 @@
 
                 <div class="section-header">
                     <h2>Transactions</h2>
-                    <button type="button" id="exportCsvButton" class="secondary-button">
-                        Export CSV
-                    </button>
+                    <div class="backup-actions">
+                        <button type="button" id="backupJsonButton" class="secondary-button" title="Save a backup file to your computer">
+                            Backup
+                        </button>
+                        <button type="button" id="restoreJsonButton" class="secondary-button" title="Restore a saved backup">
+                            Restore
+                        </button>
+                        <input type="file" id="restoreFileInput" accept=".json" style="display: none;">
+                        <button type="button" id="exportCsvButton" class="secondary-button">
+                            Export CSV
+                        </button>
+                    </div>
                 </div>
 
                 <div class="transaction-controls" id="transactionControls">
@@ -421,6 +451,30 @@
             </footer>
 
         </main>
+
+        <!-- MOBILE BOTTOM NAVIGATION BAR -->
+        <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Mobile Navigation">
+            <a href="#dashboard" class="mobile-nav-item active">
+                <span class="nav-icon">🏠</span>
+                <span class="nav-label">Home</span>
+            </a>
+            <a href="#addExpense" class="mobile-nav-item">
+                <span class="nav-icon">➕</span>
+                <span class="nav-label">Add</span>
+            </a>
+            <a href="#transactions" class="mobile-nav-item">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">History</span>
+            </a>
+            <a href="#reports" class="mobile-nav-item">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Reports</span>
+            </a>
+            <a href="#budget" class="mobile-nav-item">
+                <span class="nav-icon">💰</span>
+                <span class="nav-label">Budget</span>
+            </a>
+        </nav>
 
     </div>
 
